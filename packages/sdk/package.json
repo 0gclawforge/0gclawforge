@@ -1,0 +1,22 @@
+{
+  "name": "@0gclawforge/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'SDK tests placeholder'"
+  },
+  "dependencies": {
+    "@0gfoundation/0g-ts-sdk": "^1.2.8",
+    "@0glabs/0g-serving-broker": "^0.7.8",
+    "ethers": "^6.11.0",
+    "openai": "^4.40.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.4.0"
+  }
+}

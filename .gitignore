@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.local
+.env.deployed
+dist/
+.next/
+artifacts/
+cache/
+typechain-types/
+coverage/
+.turbo/
+*.tsbuildinfo

@@ -1,0 +1,22 @@
+version: "3.8"
+
+services:
+  dashboard:
+    build:
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    depends_on:
+      - hardhat
+
+  hardhat:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./packages/contracts:/app
+    command: npx hardhat node
+    ports:
+      - "8545:8545"

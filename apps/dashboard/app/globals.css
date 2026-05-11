@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background: #0A0A0F;
+  color: #F0F0FF;
+  font-family: "Inter", sans-serif;
+}
+
+.gradient-border {
+  position: relative;
+  background: #1A1A28;
+  border-radius: 12px;
+}
+
+.gradient-border::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #6E54FF33, #00E5FF33);
+  z-index: -1;
+}
+
+.glow-purple {
+  box-shadow: 0 0 20px rgba(110, 84, 255, 0.3);
+}
+
+.glow-cyan {
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.3);
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}

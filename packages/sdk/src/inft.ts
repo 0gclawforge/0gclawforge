@@ -1,0 +1,94 @@
+import { ethers } from "ethers";
+import type { AgentMintParams } from "./types";
+
+// ABI subset for AgentINFT interactions
+const AGENT_INFT_ABI = [
+  "function mint(address to, string agentName, string personality, string modelType, bytes32 metadataHash, string storageURI) returns (uint256)",
+  "function getAgentData(uint256 tokenId) view returns (tuple(bytes32 metadataHash, string encryptedStorageURI, string agentName, string agentPersonality, string modelType, uint256 skillCount, uint256 taskCount, uint256 memorySize, uint256 createdAt, uint256 lastActiveAt, bool isListedForSale, uint256 salePrice))",
+  "function updateMetadata(uint256 tokenId, bytes32 newMetadataHash, string newStorageURI, uint256 newMemorySize, bytes proof)",
+  "function secureTransfer(address from, address to, uint256 tokenId, bytes32 newMetadataHash, string newStorageURI, bytes sealedKey, bytes transferProof)",
+  "function listForSale(uint256 tokenId, uint256 price)",
+  "function delist(uint256 tokenId)",
+  "function recordTaskCompletion(uint256 tokenId)",
+  "function balanceOf(address owner) view returns (uint256)",
+  "function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)",
+  "function totalSupply() view returns (uint256)",
+  "function ownerOf(uint256 tokenId) view returns (address)",
+  "event AgentMinted(uint256 indexed tokenId, address indexed owner, string agentName, string encryptedStorageURI)",
+];
+
+export class INFTClient {
+  private contract: ethers.Contract;
+  private signer: ethers.Signer;
+
+  constructor(contractAddress: string, signer: ethers.Signer) {
+    this.signer = signer;
+    this.contract = new ethers.Contract(contractAddress, AGENT_INFT_ABI, signer);
+  }
+
+  async mintAgent(
+    params: AgentMintParams
+  ): Promise<{ tokenId: number; txHash: string }> {
+    const tx = await this.contract.mint(
+      params.to,
+      params.agentName,
+      params.personality,
+      params.modelType,
+      params.metadataHash,
+      params.storageURI
+    );
+    const receipt = await tx.wait();
+
+    const event = receipt?.logs
+      .map((log: any) => {
+        try {
+          return this.contract.interface.parseLog(log);
+        } catch {
+          return null;
+        }
+      })
+      .find((e: any) => e?.name === "AgentMinted");
+
+    const tokenId = Number(event?.args?.tokenId ?? 0);
+    return { tokenId, txHash: receipt?.hash ?? "" };
+  }
+
+  async getAgentData(tokenId: number) {
+    return await this.contract.getAgentData(tokenId);
+  }
+
+  async listForSale(tokenId: number, priceWei: bigint) {
+    const tx = await this.contract.listForSale(tokenId, priceWei);
+    return await tx.wait();
+  }
+
+  async recordTaskCompletion(tokenId: number) {
+    const tx = await this.contract.recordTaskCompletion(tokenId);
+    return await tx.wait();
+  }
+
+  async getAllAgentsForOwner(ownerAddress: string): Promise<number[]> {
+    const balance = await this.contract.balanceOf(ownerAddress);
+    const tokenIds: number[] = [];
+    for (let i = 0; i < Number(balance); i++) {
+      const tokenId = await this.contract.tokenOfOwnerByIndex(ownerAddress, i);
+      tokenIds.push(Number(tokenId));
+    }
+    return tokenIds;
+  }
+
+  async getListedAgents(): Promise<
+    Array<{ tokenId: number; price: bigint; owner: string }>
+  > {
+    const totalSupply = await this.contract.totalSupply();
+    const listed: Array<{ tokenId: number; price: bigint; owner: string }> = [];
+    for (let i = 1; i <= Number(totalSupply); i++) {
+      const data = await this.contract.getAgentData(i);
+      if (data.isListedForSale) {
+        const owner = await this.contract.ownerOf(i);
+        listed.push({ tokenId: i, price: data.salePrice, owner });
+      }
+    }
+    return listed;
+  }
+}

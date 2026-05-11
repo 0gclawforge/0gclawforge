@@ -1,0 +1,16 @@
+{
+  "name": "@0gclawforge/openclaw-fork",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@0gclawforge/sdk": "workspace:*",
+    "ethers": "^6.11.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

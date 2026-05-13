@@ -1,131 +1,182 @@
 # 0GClawForge
 
-0GClawForge is the first complete OpenClaw-powered sovereign agent OS — a forge where teams mint, orchestrate, own (as ERC-7857 iNFTs), persist, and evolve multi-agent systems that run verifiable TEE inference, store long-term memory forever on 0G, and execute autonomous on-chain actions with zero context loss. Built on top, Eternal Clans is the flagship consumer application: tradable AI civilizations where players co-create UGC Gaming realms + SocialFi DAOs + DePIN coordination into one living, self-evolving digital nation.
+0GClawForge is a sovereign agent OS built on the 0G ecosystem. It lets users mint, orchestrate, own (as ERC-7857 iNFTs), persist, and evolve multi-agent civilizations that run verifiable TEE inference via 0G Compute, store long-term memory forever on 0G Storage, and execute autonomous on-chain actions with zero context loss. Eternal Clans is the flagship application: tradable AI civilizations where players co-create UGC realms, govern evolution through community votes, coordinate DePIN data, and deploy live chat agents — all in one living, self-evolving digital nation.
 
-## Focused MVP
+**Live:** [https://0gclawforge.duckdns.org](https://0gclawforge.duckdns.org)
 
-0GClawForge is built around four non-negotiable pillars:
+## Features
 
-- **Permanent Memory + Verifiable Inference:** 0G Storage persists clan memory and realm history forever; 0G Compute wraps every agent call with TEE-verifiable inference.
-- **Mint & Own an Entire Clan as One iNFT:** one ERC-7857 token represents the full multi-agent clan, intelligence blob, memory root, realm roots, vote roots, and transfer history.
-- **UGC Realm Co-Creation:** players prompt OpenClaw to generate game realms, NPCs, quests, and artifacts, then store them permanently on 0G.
-- **Autonomous Evolution + Trade:** community votes trigger verified OpenClaw evolution, memory updates, realm regeneration, and trade-ready ownership transfer with full history intact.
+### Wallet Connect (RainbowKit)
+- Multi-wallet support via RainbowKit (MetaMask, WalletConnect QR, Coinbase Wallet, and more)
+- Chain switching between 0G Galileo Testnet (16602) and 0G Mainnet (16661)
+- Real on-chain transactions for every action
 
-Phase 2 items such as SocialFi auto-deploy, DePIN data pulls, in-realm quests, and Discord/Telegram bots are intentionally stubbed or documented only. They are not part of the MVP UI flow.
+### Mint Clan iNFT
+- Upload clan metadata and initial memory to 0G Storage
+- Mint the entire multi-agent civilization as a single ERC-7857 iNFT
+- Memory root, realm root, and metadata hash stored on-chain
+- Token ID auto-fills for all subsequent actions
 
-## How the Two Ideas Merge Seamlessly (Stronger Together)
+### UGC Realm Generation (0G Compute Inference)
+- Realm prompts are processed through real 0G Compute verifiable inference
+- Returns unique lore, biomes, NPCs, quests, and artifacts per prompt
+- Generated realm artifacts persisted permanently on 0G Storage
+- Realm root updated on-chain via contract call
 
-0GClawForge (the OS layer) provides the sovereign agent operating system with permanent 0G memory, TEE-verified inference, and ERC-7857 iNFT ownership. Eternal Clans (the flagship consumer app) is built directly on top and delivers the addictive experience: players mint a full clan as one iNFT, co-create permanent UGC gaming realms via OpenClaw prompts, watch the clan autonomously evolve with zero context loss, and trade the entire living civilization with all history and intelligence intact.
+### Community Governance (Votes)
+- Evolution proposals stored as permanent records on 0G Storage
+- Vote roots updated on-chain with full proposal history
+- Immutable governance trail for every clan
 
-## Why This Combined Version Is the Ultimate Product
+### Live Clan Dashboard
+- **DePIN Integration:** Live WeatherXM network data pulls (station counts, data quality, active devices)
+- **Telegram Bot:** Slash commands for `/status`, `/quest`, `/depin`, `/proposal` — real long-polling bot
+- **Discord Bot:** Gateway-connected bot with slash commands, guild member summary, and channel posting
+- **Autonomous Quest Engine:** Loads real memory context from 0G Storage, incorporates live DePIN data, runs quest through 0G Compute inference, writes result back as permanent memory
+- **Runtime Controls:** Deploy, stop, refresh, and monitor the live clan runtime from the dashboard
 
-The result is one elegant product with massive depth and consumer appeal: deepest OpenClaw + 0G stack integration, true ownership of living AI systems, instant permanent UGC worlds, and seamless mint → create → evolve → trade flow. It solves the core problems of context loss, lack of ownership, and siloed creation in one focused, tradable digital nation experience.
+### Evolution (On-Chain)
+- Records clan evolution on-chain with real wallet address as executor
+- Realm regeneration through 0G Compute inference during evolution
+- Memory root, realm root, metadata hash, and realm count all updated atomically
+
+### Marketplace
+- Browse listed clans with name, archetype, model type, and price
+- Buy clans through the AgentMarketplace contract (`buyAgent`) with real OG payment
+- Seller receives payment minus marketplace fee
+- Buyer inherits the clan, its memory, realms, and full history
+
+### Trade
+- List clan iNFT for sale directly from the app
+- Delist at any time
+- Price set in OG tokens
 
 ## Architecture
 
-```text
+```
 0gclawforge/
-  os-core/              Sovereign agent OS composition layer
-  clans-app/            Eternal Clans application logic on top of the OS
-  agents/               OpenClaw realm generation, proposals, voting, evolution
-  storage/              Permanent 0G memory/log wrapper
-  compute/              TEE-verifiable 0G inference wrapper
+  agents/               Autonomous runtime, quest engine, DePIN client, social bots
+  storage/              Permanent 0G memory/log wrapper (PermanentMemory)
+  compute/              TEE-verifiable 0G inference wrapper (VerifiableInference)
   packages/contracts/   ERC-7857 clan iNFT, marketplace, registry, oracle
   packages/sdk/         Typed 0G Storage, Compute, Memory, iNFT primitives
   packages/shared/      Product constants, network config, shared types
-  apps/dashboard/       Five-screen Next.js MVP UI
-  scripts/              Deploy and verification shell entry points
-  demo/                 3-minute Loom script and recording checklist
+  apps/dashboard/       Next.js production app with five tabs + marketplace
+  scripts/              Deploy and verification scripts
 ```
 
-The older dashboard routes remain available, but the primary MVP entry point is `/` with five tabs only: Forge OS, Mint Clan, UGC Realm Builder, Live Clan Dashboard, and Trade Clan.
+### Key SDK Stack
+- **0G Storage:** `@0gfoundation/0g-ts-sdk` via `Indexer` class — all uploads go through `packages/sdk/src/storage.ts`
+- **0G Compute:** `@0glabs/0g-serving-broker` via `createZGComputeNetworkBroker` — all inference goes through `packages/sdk/src/compute.ts`
+- **Smart Contracts:** ERC-7857 (ERC-721 + encrypted metadata) on 0G Chain
 
-## 0G Galileo Testnet Defaults
+## 0G Testnet Endpoints (Galileo)
 
-- Chain ID: `16602`
-- Primary RPC: `https://evmrpc-testnet.0g.ai`
-- Alternate RPCs: `https://rpc.ankr.com/0g_galileo_testnet_evm`, `https://0g-galileo-testnet.drpc.org`
-- Explorer: `https://chainscan-galileo.0g.ai`
-- Storage indexer: `https://indexer-storage-testnet-turbo.0g.ai`
+| Endpoint | URL |
+|---|---|
+| RPC | `https://evmrpc-testnet.0g.ai` |
+| Storage Indexer (Turbo) | `https://indexer-storage-testnet-turbo.0g.ai` |
+| Faucet | `https://faucet.0g.ai` |
+| Explorer | `https://chainscan-galileo.0g.ai` |
+| Chain ID | `16602` |
 
-All contracts, SDK calls, and wallet connections read from env-backed config.
-
-## Quick Start
+## Quick Start (Local Dev)
 
 ```bash
 pnpm install
 cp .env.example .env
-pnpm test
-pnpm dev
+# Fill in PRIVATE_KEY with a funded Galileo wallet
+pnpm --filter @0gclawforge/agents build
+pnpm --filter @0gclawforge/dashboard dev
 ```
 
-Open `http://localhost:3000` and run the focused flow:
+Open `http://localhost:3000`.
 
-1. Review Forge OS pillars.
-2. Mint the clan iNFT.
-3. Generate a UGC realm from a prompt.
-4. Create and execute a community evolution proposal in the Live Clan Dashboard.
-5. Review the Trade Clan transfer bundle.
+## VPS Deployment
 
-## How to Run the Demo
+The app includes long-lived bot processes (Telegram polling, Discord gateway, autonomous loop) that require a persistent server.
 
-```bash
-pnpm demo
-```
+### Requirements
+- Ubuntu 22.04+, 2 vCPU / 4 GB RAM minimum
+- Node.js 20, pnpm, pm2, nginx
 
-For a live Galileo deployment:
+### Steps
 
 ```bash
+# Clone and install
+cd /var/www
+git clone https://github.com/0gclawforge/0gclawforge.git
+cd 0gclawforge
+pnpm install --no-frozen-lockfile
+
+# Configure
 cp .env.example .env
-# Fill PRIVATE_KEY and funded Galileo wallet values.
-pnpm deploy:testnet
-pnpm dev
+nano .env  # Fill all values
+
+# Build
+pnpm --filter @0gclawforge/agents build
+pnpm --filter @0gclawforge/dashboard build
+
+# Start with PM2
+cd apps/dashboard
+pm2 start './node_modules/.bin/next start -H 127.0.0.1 -p 3002' --name 0gclawforge
+pm2 save && pm2 startup
+
+# Nginx reverse proxy + SSL
+# See deployment guide for full nginx config and certbot setup
 ```
 
-## Easy Mainnet Swap (1-minute change)
+### Update Deployment
 
-1. Copy `.env.example` → `.env`.
-2. Change `CHAIN_ID` / `VITE_CHAIN_ID` / `NEXT_PUBLIC_OG_CHAIN_ID` to `16661`.
-3. Change `RPC_URL` / `VITE_RPC_URL` / `NEXT_PUBLIC_OG_RPC_URL` to `https://evmrpc.0g.ai`.
-4. Change `EXPLORER_URL` / `VITE_EXPLORER_URL` / `NEXT_PUBLIC_OG_EXPLORER` to `https://chainscan.0g.ai`.
-5. Update any contract addresses in `.env` after deployment.
-6. Run `yarn deploy:mainnet` or `pnpm deploy:mainnet`.
-7. Redeploy contracts and update iNFT references.
+```bash
+cd /var/www/0gclawforge
+git pull
+pnpm install --no-frozen-lockfile
+pnpm --filter @0gclawforge/agents build
+pnpm --filter @0gclawforge/dashboard build
+pm2 restart 0gclawforge
+```
 
 ## Environment Variables
 
 See [.env.example](.env.example). Key variables:
 
-- `VITE_CHAIN_ID`, `VITE_RPC_URL`, `VITE_EXPLORER_URL`, `VITE_STORAGE_INDEXER`
-- `NEXT_PUBLIC_OG_CHAIN_ID`, `NEXT_PUBLIC_OG_RPC_URL`, `NEXT_PUBLIC_OG_EXPLORER`
-- `PRIVATE_KEY`
-- `OG_STORAGE_INDEXER_TURBO`, `OG_COMPUTE_PROVIDER_ADDR`
-- `NEXT_PUBLIC_AGENT_INFT_ADDRESS`, `NEXT_PUBLIC_AGENT_MARKETPLACE_ADDRESS`
+| Variable | Purpose |
+|---|---|
+| `PRIVATE_KEY` | Funded wallet for 0G Storage uploads and Compute |
+| `NEXT_PUBLIC_OG_RPC_URL` | 0G chain RPC endpoint |
+| `NEXT_PUBLIC_OG_CHAIN_ID` | Chain ID (16602 testnet, 16661 mainnet) |
+| `NEXT_PUBLIC_STORAGE_INDEXER` | 0G Storage indexer URL |
+| `OG_COMPUTE_PROVIDER_ADDR` | 0G Compute provider address |
+| `NEXT_PUBLIC_AGENT_INFT_ADDRESS` | Deployed iNFT contract address |
+| `NEXT_PUBLIC_AGENT_MARKETPLACE_ADDRESS` | Deployed marketplace contract address |
+| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | WalletConnect Cloud project ID (optional) |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token from BotFather |
+| `TELEGRAM_DEFAULT_CHAT_ID` | Target Telegram chat/group ID |
+| `DISCORD_BOT_TOKEN` | Discord bot token |
+| `DISCORD_APPLICATION_ID` | Discord application ID |
+| `DISCORD_GUILD_ID` | Target Discord server ID |
+| `DISCORD_DEFAULT_CHANNEL_ID` | Target Discord channel ID |
+| `WEATHERXM_API_BASE` | WeatherXM API base URL |
+
+## Mainnet Swap
+
+1. Change `NEXT_PUBLIC_OG_CHAIN_ID` to `16661`
+2. Change `NEXT_PUBLIC_OG_RPC_URL` to `https://evmrpc.0g.ai`
+3. Change `NEXT_PUBLIC_OG_EXPLORER` to `https://chainscan.0g.ai`
+4. Deploy contracts to mainnet and update addresses in `.env`
+5. Rebuild and restart
 
 ## Scripts
 
 ```bash
-pnpm dev                # Start all dev tasks through Turbo
-pnpm demo               # Build, then launch the dashboard demo
+pnpm dev                # Start dashboard in dev mode
 pnpm build              # Build all workspace packages
-pnpm test               # Run focused tests
+pnpm test               # Run tests
 pnpm typecheck          # Type check all workspaces
-pnpm deploy:testnet     # Deploy contracts to 0G Galileo Testnet
+pnpm deploy:testnet     # Deploy contracts to 0G Galileo
 pnpm deploy:mainnet     # Deploy contracts to 0G Mainnet
-pnpm verify:contracts   # Contract verification entry point
 ```
-
-## Current Verification
-
-- `pnpm --filter @0gclawforge/contracts test`
-- `pnpm --filter @0gclawforge/dashboard typecheck`
-- `pnpm --filter @0gclawforge/shared typecheck`
-- `pnpm --filter @0gclawforge/sdk typecheck`
-- `pnpm --filter @0gclawforge/storage typecheck`
-- `pnpm --filter @0gclawforge/compute typecheck`
-- `pnpm --filter @0gclawforge/agents typecheck`
-- `pnpm --filter @0gclawforge/os-core typecheck`
-- `pnpm --filter @0gclawforge/clans-app typecheck`
 
 ## License
 

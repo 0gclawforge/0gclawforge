@@ -206,15 +206,23 @@ export default function HomePage() {
       setMemoryRoot(prepared.memoryRootURI);
       setRealmRoot(prepared.realmRootURI);
       if (publicClient) {
-        const receipt = await publicClient.waitForTransactionReceipt({ hash });
-        const events = parseEventLogs({
-          abi: agentInftAbi,
-          eventName: "ClanMinted",
-          logs: receipt.logs,
-        });
-        const mintedTokenId = events[0]?.args.tokenId;
-        if (mintedTokenId) {
-          setTokenId(mintedTokenId.toString());
+        try {
+          const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000, pollingInterval: 3_000 });
+          const events = parseEventLogs({
+            abi: agentInftAbi,
+            eventName: "ClanMinted",
+            logs: receipt.logs,
+          });
+          const mintedTokenId = events[0]?.args.tokenId;
+          if (mintedTokenId) {
+            setTokenId(mintedTokenId.toString());
+          }
+        } catch {
+          return {
+            kind: "success",
+            message: "Clan mint tx submitted but receipt not yet confirmed by the RPC. Check the explorer and enter the token ID manually if needed.",
+            txHash: hash,
+          };
         }
       }
 

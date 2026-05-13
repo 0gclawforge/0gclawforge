@@ -3,9 +3,12 @@
 @tailwind utilities;
 
 body {
-  background: #0A0A0F;
-  color: #F0F0FF;
-  font-family: "Inter", sans-serif;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(216, 91, 36, 0.2), transparent 28rem),
+    radial-gradient(circle at 80% 10%, rgba(38, 122, 99, 0.2), transparent 30rem),
+    linear-gradient(135deg, #0d0b08 0%, #16100a 45%, #07110d 100%);
+  color: #f7ead2;
+  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
 }
 
 .gradient-border {

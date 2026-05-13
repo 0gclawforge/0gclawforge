@@ -1,11 +1,16 @@
 import { ethers } from "ethers";
-import type { AgentMintParams } from "./types";
+import type { AgentMintParams, ClanMintParams } from "./types";
 
 // ABI subset for AgentINFT interactions
 const AGENT_INFT_ABI = [
   "function mint(address to, string agentName, string personality, string modelType, bytes32 metadataHash, string storageURI) returns (uint256)",
+  "function mintClan(address to, string clanName, string archetype, string modelType, bytes32 metadataHash, string storageURI, string memoryRootURI, string realmRootURI) returns (uint256)",
   "function getAgentData(uint256 tokenId) view returns (tuple(bytes32 metadataHash, string encryptedStorageURI, string agentName, string agentPersonality, string modelType, uint256 skillCount, uint256 taskCount, uint256 memorySize, uint256 createdAt, uint256 lastActiveAt, bool isListedForSale, uint256 salePrice))",
+  "function getClanState(uint256 tokenId) view returns (tuple(string memoryRootURI, string realmRootURI, string voteRootURI, uint256 realmCount, uint256 proposalCount, uint256 evolutionCount))",
   "function updateMetadata(uint256 tokenId, bytes32 newMetadataHash, string newStorageURI, uint256 newMemorySize, bytes proof)",
+  "function updateRealmRoot(uint256 tokenId, string newRealmRootURI, uint256 newRealmCount, bytes proof)",
+  "function updateVoteRoot(uint256 tokenId, string newVoteRootURI, uint256 newProposalCount, bytes proof)",
+  "function recordClanEvolution(uint256 tokenId, bytes32 newMetadataHash, string newStorageURI, string newMemoryRootURI, string newRealmRootURI, uint256 newMemorySize, uint256 newRealmCount, bytes proof)",
   "function secureTransfer(address from, address to, uint256 tokenId, bytes32 newMetadataHash, string newStorageURI, bytes sealedKey, bytes transferProof)",
   "function listForSale(uint256 tokenId, uint256 price)",
   "function delist(uint256 tokenId)",
@@ -53,8 +58,69 @@ export class INFTClient {
     return { tokenId, txHash: receipt?.hash ?? "" };
   }
 
+  async mintClan(
+    params: ClanMintParams
+  ): Promise<{ tokenId: number; txHash: string }> {
+    const tx = await this.contract.mintClan(
+      params.to,
+      params.agentName,
+      params.personality,
+      params.modelType,
+      params.metadataHash,
+      params.storageURI,
+      params.memoryRootURI,
+      params.realmRootURI
+    );
+    const receipt = await tx.wait();
+
+    const event = receipt?.logs
+      .map((log: any) => {
+        try {
+          return this.contract.interface.parseLog(log);
+        } catch {
+          return null;
+        }
+      })
+      .find((e: any) => e?.name === "ClanMinted" || e?.name === "AgentMinted");
+
+    const tokenId = Number(event?.args?.tokenId ?? 0);
+    return { tokenId, txHash: receipt?.hash ?? "" };
+  }
+
   async getAgentData(tokenId: number) {
     return await this.contract.getAgentData(tokenId);
+  }
+
+  async getClanState(tokenId: number) {
+    return await this.contract.getClanState(tokenId);
+  }
+
+  async updateVoteRoot(tokenId: number, voteRootUri: string, proposalCount: number, proof = "0x00") {
+    const tx = await this.contract.updateVoteRoot(tokenId, voteRootUri, proposalCount, proof);
+    return await tx.wait();
+  }
+
+  async recordClanEvolution(
+    tokenId: number,
+    metadataHash: string,
+    storageUri: string,
+    memoryRootUri: string,
+    realmRootUri: string,
+    memorySize: number,
+    realmCount: number,
+    proof = "0x00"
+  ) {
+    const tx = await this.contract.recordClanEvolution(
+      tokenId,
+      metadataHash,
+      storageUri,
+      memoryRootUri,
+      realmRootUri,
+      memorySize,
+      realmCount,
+      proof
+    );
+    return await tx.wait();
   }
 
   async listForSale(tokenId: number, priceWei: bigint) {

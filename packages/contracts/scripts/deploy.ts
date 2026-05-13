@@ -3,6 +3,12 @@ import * as fs from "fs";
 
 async function main() {
   const [deployer] = await ethers.getSigners();
+  const network = await ethers.provider.getNetwork();
+  const explorer =
+    process.env.VITE_EXPLORER_URL ||
+    process.env.NEXT_PUBLIC_OG_EXPLORER ||
+    (network.chainId === 16661n ? "https://chainscan.0g.ai" : "https://chainscan-galileo.0g.ai");
+
   console.log("Deploying to 0G Chain with:", deployer.address);
   console.log(
     "Balance:",
@@ -45,7 +51,7 @@ async function main() {
     NEXT_PUBLIC_AGENT_REGISTRY_ADDRESS: await registry.getAddress(),
     NEXT_PUBLIC_AGENT_MARKETPLACE_ADDRESS: await marketplace.getAddress(),
     DEPLOYED_AT: new Date().toISOString(),
-    CHAIN_ID: (await ethers.provider.getNetwork()).chainId.toString(),
+    CHAIN_ID: network.chainId.toString(),
   };
 
   fs.writeFileSync(
@@ -58,7 +64,7 @@ async function main() {
   console.log("\n✅ Deployment complete! Addresses written to .env.deployed");
   console.log(
     "🔗 Explorer:",
-    `https://chainscan-galileo.0g.ai/address/${await inft.getAddress()}`
+    `${explorer}/address/${await inft.getAddress()}`
   );
 }
 

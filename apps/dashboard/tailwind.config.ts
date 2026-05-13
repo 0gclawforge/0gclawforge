@@ -6,6 +6,12 @@ const config: Config = {
     extend: {
       colors: {
         bg: "#0A0A0F",
+        obsidian: "#0d0b08",
+        parchment: "#f7ead2",
+        ember: "#d85b24",
+        moss: "#267a63",
+        gold: "#d7a84a",
+        stone: "#a39178",
         surface: "#12121A",
         card: "#1A1A28",
         border: "#2A2A40",

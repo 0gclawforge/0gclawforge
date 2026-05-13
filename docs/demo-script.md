@@ -1,43 +1,15 @@
-# 0GClawForge Demo Script (3 minutes)
+# 3-Minute Demo Script
 
-## 0:00-0:15 -- Hook
-"What if your AI agent could survive a laptop crash, be sold on a marketplace, and remember everything forever?"
+0GClawForge is the first complete OpenClaw-powered sovereign agent OS — a forge where teams mint, orchestrate, own (as ERC-7857 iNFTs), persist, and evolve multi-agent systems that run verifiable TEE inference, store long-term memory forever on 0G, and execute autonomous on-chain actions with zero context loss. Built on top, Eternal Clans is the flagship consumer application: tradable AI civilizations where players co-create UGC Gaming realms + SocialFi DAOs + DePIN coordination into one living, self-evolving digital nation.
 
-## 0:15-0:45 -- Dashboard Home
-- Show landing page with animated forge ASCII art
-- Point out real-time stats bar (agents forged, tasks completed, storage used)
-- Show 0G network status indicator (green = healthy)
+## Recording Flow
 
-## 0:45-1:15 -- Forge a New Agent
-- Click "Forge New Agent"
-- Fill in: Name="AlphaTrader", Personality="Aggressive crypto trader", Model=gemma-3-27b
-- Select capabilities: Trading, Analysis, Research
-- Click through to mint step
-- Watch progress: Encrypting -> Uploading to 0G Storage -> Computing hash -> Minting iNFT
-- Show success with tokenId and explorer link
+1. Open the home page and show the four pillars in Forge OS.
+2. Move to Mint Clan and explain that one ERC-7857 iNFT owns the full multi-agent civilization.
+3. Move to UGC Realm Builder, enter a realm prompt, and generate the permanent 0G realm.
+4. Move to Live Clan Dashboard, create a proposal, and execute the winning evolution through the TEE OpenClaw flow.
+5. Move to Trade Clan and explain that buyer receives memory, realms, vote history, and intelligence intact.
 
-## 1:15-1:45 -- Launch a Swarm Task
-- Navigate to /swarm
-- Enter task: "Research the top 5 DeFi protocols by TVL and identify risks"
-- Set 3 workers, click "Launch Swarm"
-- Show supervisor planning, workers executing in parallel on the canvas
-- Show final synthesis output
+## Suggested Narration
 
-## 1:45-2:15 -- Memory Page
-- Navigate to /memory
-- Search for "DeFi" -- show memories from the swarm task
-- Point out: these memories are permanently on 0G Storage
-- Show memory graph visualization
-- "Next time this agent runs, it remembers everything"
-
-## 2:15-2:45 -- Marketplace
-- Navigate to /marketplace
-- Show listed agents with capabilities, task counts, prices
-- Click "Buy Agent" -- show secure transfer modal
-- Explain: "Oracle re-encrypts the agent's intelligence for the new owner in a TEE"
-
-## 2:45-3:00 -- Closing
-"Your keys, your agent, forever on 0G."
-- Flash GitHub repo link
-- Flash deployed Vercel URL
-- Flash contract addresses on 0G Chain explorer
+"This is 0GClawForge. The OS layer gives OpenClaw agents permanent memory on 0G, verifiable inference through 0G Compute, and ERC-7857 ownership. Eternal Clans is the consumer app on top: players mint a living clan, generate permanent game worlds, evolve them through community votes, and trade the entire civilization with all context intact."

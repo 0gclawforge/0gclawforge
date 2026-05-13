@@ -24,6 +24,20 @@ export interface AgentMintParams {
   storageURI: string;
 }
 
+export interface ClanMintParams extends AgentMintParams {
+  memoryRootURI: string;
+  realmRootURI: string;
+}
+
+export interface ClanState {
+  memoryRootURI: string;
+  realmRootURI: string;
+  voteRootURI: string;
+  realmCount: bigint;
+  proposalCount: bigint;
+  evolutionCount: bigint;
+}
+
 export interface AgentTransferParams {
   tokenId: number;
   to: string;

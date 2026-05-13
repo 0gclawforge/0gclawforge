@@ -1,5 +1,6 @@
 {
   "name": "0gclawforge",
+  "description": "0GClawForge is the first complete OpenClaw-powered sovereign agent OS — a forge where teams mint, orchestrate, own (as ERC-7857 iNFTs), persist, and evolve multi-agent systems that run verifiable TEE inference, store long-term memory forever on 0G, and execute autonomous on-chain actions with zero context loss. Built on top, Eternal Clans is the flagship consumer application: tradable AI civilizations where players co-create UGC Gaming realms + SocialFi DAOs + DePIN coordination into one living, self-evolving digital nation.",
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@9.1.0",
@@ -9,7 +10,10 @@
     "test": "turbo test",
     "typecheck": "turbo typecheck",
     "lint": "turbo lint",
-    "deploy:testnet": "pnpm --filter contracts run deploy:testnet"
+    "demo": "pnpm build && pnpm --filter @0gclawforge/dashboard dev",
+    "deploy:testnet": "pnpm --filter @0gclawforge/contracts run deploy:testnet",
+    "deploy:mainnet": "pnpm --filter @0gclawforge/contracts run deploy:mainnet",
+    "verify:contracts": "pnpm --filter @0gclawforge/contracts run verify:contracts"
   },
   "devDependencies": {
     "turbo": "^2.0.0",

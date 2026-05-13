@@ -6,14 +6,17 @@ import { defineChain } from "viem";
 import { useState } from "react";
 
 const ogTestnet = defineChain({
-  id: 16602,
+  id: Number(process.env.NEXT_PUBLIC_OG_CHAIN_ID || 16602),
   name: "0G Galileo Testnet",
   nativeCurrency: { name: "0G", symbol: "OG", decimals: 18 },
   rpcUrls: {
-    default: { http: ["https://evmrpc-testnet.0g.ai"] },
+    default: { http: [process.env.NEXT_PUBLIC_OG_RPC_URL || "https://evmrpc-testnet.0g.ai"] },
   },
   blockExplorers: {
-    default: { name: "0G Explorer", url: "https://chainscan-galileo.0g.ai" },
+    default: {
+      name: "0G Explorer",
+      url: process.env.NEXT_PUBLIC_OG_EXPLORER || "https://chainscan-galileo.0g.ai",
+    },
   },
 });
 

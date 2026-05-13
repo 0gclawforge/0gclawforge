@@ -44,7 +44,17 @@ contract AgentINFT is ERC721, ERC721Enumerable, Ownable, ReentrancyGuard {
         uint256 salePrice;
     }
 
+    struct ClanState {
+        string memoryRootURI;
+        string realmRootURI;
+        string voteRootURI;
+        uint256 realmCount;
+        uint256 proposalCount;
+        uint256 evolutionCount;
+    }
+
     mapping(uint256 => AgentMetadata) public agentData;
+    mapping(uint256 => ClanState) public clanState;
     mapping(uint256 => mapping(address => bytes)) private _authorizations;
     mapping(uint256 => bytes) private _sealedKeys;
 
@@ -55,6 +65,10 @@ contract AgentINFT is ERC721, ERC721Enumerable, Ownable, ReentrancyGuard {
     event AgentDelisted(uint256 indexed tokenId);
     event AgentTaskCompleted(uint256 indexed tokenId, uint256 totalTasks);
     event MemoryUpdated(uint256 indexed tokenId, uint256 newMemorySize);
+    event ClanMinted(uint256 indexed tokenId, address indexed owner, string clanName, string memoryRootURI);
+    event RealmRootUpdated(uint256 indexed tokenId, string realmRootURI, uint256 realmCount);
+    event VoteRootUpdated(uint256 indexed tokenId, string voteRootURI, uint256 proposalCount);
+    event ClanEvolved(uint256 indexed tokenId, string memoryRootURI, string realmRootURI, uint256 evolutionCount);
 
     constructor(address _oracle) ERC721("0GClawForge Agent", "FORGE") {
         oracle = IOracle(_oracle);
@@ -68,6 +82,17 @@ contract AgentINFT is ERC721, ERC721Enumerable, Ownable, ReentrancyGuard {
         bytes32 metadataHash,
         string calldata storageURI
     ) external returns (uint256 tokenId) {
+        tokenId = _mintAgent(to, agentName, personality, modelType, metadataHash, storageURI);
+    }
+
+    function _mintAgent(
+        address to,
+        string memory agentName,
+        string memory personality,
+        string memory modelType,
+        bytes32 metadataHash,
+        string memory storageURI
+    ) internal returns (uint256 tokenId) {
         _tokenIdCounter.increment();
         tokenId = _tokenIdCounter.current();
         _safeMint(to, tokenId);
@@ -90,6 +115,25 @@ contract AgentINFT is ERC721, ERC721Enumerable, Ownable, ReentrancyGuard {
         emit AgentMinted(tokenId, to, agentName, storageURI);
     }
 
+    function mintClan(
+        address to,
+        string calldata clanName,
+        string calldata archetype,
+        string calldata modelType,
+        bytes32 metadataHash,
+        string calldata storageURI,
+        string calldata memoryRootURI,
+        string calldata realmRootURI
+    ) external returns (uint256 tokenId) {
+        tokenId = _mintAgent(to, clanName, archetype, modelType, metadataHash, storageURI);
+        ClanState storage state = clanState[tokenId];
+        state.memoryRootURI = memoryRootURI;
+        state.realmRootURI = realmRootURI;
+        state.realmCount = bytes(realmRootURI).length == 0 ? 0 : 1;
+
+        emit ClanMinted(tokenId, to, clanName, memoryRootURI);
+    }
+
     function updateMetadata(
         uint256 tokenId,
         bytes32 newMetadataHash,
@@ -105,6 +149,63 @@ contract AgentINFT is ERC721, ERC721Enumerable, Ownable, ReentrancyGuard {
         agentData[tokenId].memorySize = newMemorySize;
         agentData[tokenId].lastActiveAt = block.timestamp;
 
+        emit AgentMetadataUpdated(tokenId, newMetadataHash, newStorageURI);
+        emit MemoryUpdated(tokenId, newMemorySize);
+    }
+
+    function updateRealmRoot(
+        uint256 tokenId,
+        string calldata newRealmRootURI,
+        uint256 newRealmCount,
+        bytes calldata proof
+    ) external {
+        require(ownerOf(tokenId) == msg.sender, "Not owner");
+        require(oracle.verifyProof(proof), "Invalid proof");
+        clanState[tokenId].realmRootURI = newRealmRootURI;
+        clanState[tokenId].realmCount = newRealmCount;
+        agentData[tokenId].lastActiveAt = block.timestamp;
+        emit RealmRootUpdated(tokenId, newRealmRootURI, newRealmCount);
+    }
+
+    function updateVoteRoot(
+        uint256 tokenId,
+        string calldata newVoteRootURI,
+        uint256 newProposalCount,
+        bytes calldata proof
+    ) external {
+        require(ownerOf(tokenId) == msg.sender, "Not owner");
+        require(oracle.verifyProof(proof), "Invalid proof");
+        clanState[tokenId].voteRootURI = newVoteRootURI;
+        clanState[tokenId].proposalCount = newProposalCount;
+        agentData[tokenId].lastActiveAt = block.timestamp;
+        emit VoteRootUpdated(tokenId, newVoteRootURI, newProposalCount);
+    }
+
+    function recordClanEvolution(
+        uint256 tokenId,
+        bytes32 newMetadataHash,
+        string calldata newStorageURI,
+        string calldata newMemoryRootURI,
+        string calldata newRealmRootURI,
+        uint256 newMemorySize,
+        uint256 newRealmCount,
+        bytes calldata proof
+    ) external {
+        require(ownerOf(tokenId) == msg.sender, "Not owner");
+        require(oracle.verifyProof(proof), "Invalid proof");
+
+        agentData[tokenId].metadataHash = newMetadataHash;
+        agentData[tokenId].encryptedStorageURI = newStorageURI;
+        agentData[tokenId].memorySize = newMemorySize;
+        agentData[tokenId].taskCount++;
+        agentData[tokenId].lastActiveAt = block.timestamp;
+
+        clanState[tokenId].memoryRootURI = newMemoryRootURI;
+        clanState[tokenId].realmRootURI = newRealmRootURI;
+        clanState[tokenId].realmCount = newRealmCount;
+        clanState[tokenId].evolutionCount++;
+
+        emit ClanEvolved(tokenId, newMemoryRootURI, newRealmRootURI, clanState[tokenId].evolutionCount);
         emit AgentMetadataUpdated(tokenId, newMetadataHash, newStorageURI);
         emit MemoryUpdated(tokenId, newMemorySize);
     }
@@ -173,6 +274,11 @@ contract AgentINFT is ERC721, ERC721Enumerable, Ownable, ReentrancyGuard {
 
     function getAgentData(uint256 tokenId) external view returns (AgentMetadata memory) {
         return agentData[tokenId];
+    }
+
+    function getClanState(uint256 tokenId) external view returns (ClanState memory) {
+        require(_exists(tokenId), "Token does not exist");
+        return clanState[tokenId];
     }
 
     function getSealedKey(uint256 tokenId) external view returns (bytes memory) {

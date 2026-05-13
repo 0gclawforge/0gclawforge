@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@0gclawforge/agents": "workspace:*",
     "@0gclawforge/sdk": "workspace:*",
     "@0gclawforge/shared": "workspace:*",
     "@rainbow-me/rainbowkit": "^2.1.0",

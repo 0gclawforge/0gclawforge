@@ -11,9 +11,13 @@
   },
   "dependencies": {
     "@0gclawforge/compute": "workspace:*",
-    "@0gclawforge/storage": "workspace:*"
+    "@0gclawforge/sdk": "workspace:*",
+    "@0gclawforge/storage": "workspace:*",
+    "discord.js": "^14.19.3",
+    "zlib-sync": "^0.1.9"
   },
   "devDependencies": {
+    "@types/node": "^20.11.0",
     "typescript": "^5.4.0"
   }
 }

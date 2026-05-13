@@ -11,6 +11,7 @@
     "typecheck": "turbo typecheck",
     "lint": "turbo lint",
     "demo": "pnpm build && pnpm --filter @0gclawforge/dashboard dev",
+    "autonomy:build": "pnpm --filter @0gclawforge/agents build",
     "deploy:testnet": "pnpm --filter @0gclawforge/contracts run deploy:testnet",
     "deploy:mainnet": "pnpm --filter @0gclawforge/contracts run deploy:mainnet",
     "verify:contracts": "pnpm --filter @0gclawforge/contracts run verify:contracts"

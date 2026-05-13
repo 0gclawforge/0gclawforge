@@ -17,9 +17,15 @@ export interface VerifiableInferenceResult {
  */
 export class VerifiableInference {
   private readonly client: ZGComputeClient;
+  private readonly config: ComputeConfig;
 
   constructor(config: ComputeConfig) {
+    this.config = config;
     this.client = new ZGComputeClient(config);
+  }
+
+  async ensureProviderReady(fundAmountOG = 1): Promise<void> {
+    await this.client.setupProvider(this.config.providerAddress, fundAmountOG);
   }
 
   async run(prompt: string, options: ComputeQueryOptions = {}): Promise<VerifiableInferenceResult> {

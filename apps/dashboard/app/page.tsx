@@ -290,6 +290,7 @@ export default function HomePage() {
         proposal,
         prompt: realmPrompt,
         currentRealmCount: realmCount,
+        executor: address,
       });
 
       setStatus({ kind: "working", message: "Waiting for wallet signature to record clan evolution..." });

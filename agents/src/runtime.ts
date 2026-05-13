@@ -120,12 +120,24 @@ export class ClanRuntimeManager {
 
     await this.updateDepinSummary();
 
+    let memoryContext = "";
+    if (this.deployment.memoryRootHash) {
+      const entries = await this.memory.queryClanMemory(
+        this.deployment.memoryRootHash,
+        `${this.deployment.clanName} ${this.deployment.proposal} ${this.deployment.realmPrompt}`,
+        5
+      );
+      if (entries.length > 0) {
+        memoryContext = entries.map((e) => `[${e.tags.join(",")}] ${e.content}`).join("\n\n");
+      }
+    }
+
     const quest = await this.questEngine.runQuest({
       clanName: this.deployment.clanName,
       realmPrompt: this.deployment.realmPrompt,
       proposal: this.deployment.proposal,
       depinSummary: this.lastDepinSummary,
-      memoryContext: this.deployment.memoryRootHash || "",
+      memoryContext,
     });
 
     this.lastQuestOutcome = `${quest.title}: ${quest.outcome}`;

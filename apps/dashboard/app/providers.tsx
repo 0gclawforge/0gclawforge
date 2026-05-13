@@ -1,7 +1,10 @@
 "use client";
 
+import "@rainbow-me/rainbowkit/styles.css";
+
+import { getDefaultConfig, RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { WagmiProvider, createConfig, http } from "wagmi";
+import { WagmiProvider } from "wagmi";
 import { defineChain } from "viem";
 import { useState } from "react";
 
@@ -35,12 +38,10 @@ const ogMainnet = defineChain({
   },
 });
 
-const config = createConfig({
+const config = getDefaultConfig({
+  appName: "0GClawForge",
+  projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "0gclawforge-dev",
   chains: [ogTestnet, ogMainnet],
-  transports: {
-    [ogTestnet.id]: http(),
-    [ogMainnet.id]: http(),
-  },
 });
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -48,7 +49,17 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <WagmiProvider config={config}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <RainbowKitProvider
+          theme={darkTheme({
+            accentColor: "#D4A843",
+            accentColorForeground: "#1A1A1A",
+            borderRadius: "medium",
+          })}
+        >
+          {children}
+        </RainbowKitProvider>
+      </QueryClientProvider>
     </WagmiProvider>
   );
 }

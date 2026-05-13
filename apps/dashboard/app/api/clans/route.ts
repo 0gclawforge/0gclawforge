@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
-import { uploadJSON } from "@0gclawforge/sdk";
+import { uploadJSON, ZGComputeClient } from "@0gclawforge/sdk";
 
 interface ClanApiBody {
   action: "prepareMint" | "storeRealm" | "storeVote" | "storeEvolution";
@@ -14,6 +14,7 @@ interface ClanApiBody {
   yesVotes?: number;
   noVotes?: number;
   currentRealmCount?: number;
+  executor?: string;
 }
 
 function readPrivateKey(): string {
@@ -22,6 +23,66 @@ function readPrivateKey(): string {
     throw new Error("PRIVATE_KEY is required for 0G Storage uploads");
   }
   return privateKey.split(/\s+/)[0];
+}
+
+function getComputeConfig() {
+  const rpcUrl = process.env.VITE_RPC_URL || process.env.NEXT_PUBLIC_OG_RPC_URL;
+  const providerAddress = process.env.OG_COMPUTE_PROVIDER_ADDR;
+  if (!rpcUrl || !providerAddress) return null;
+  return { rpcUrl, privateKey: readPrivateKey(), providerAddress };
+}
+
+async function generateRealmWithInference(prompt: string): Promise<{ title: string; lore: string; assets: Array<{ type: string; name: string; description: string }> }> {
+  const computeConfig = getComputeConfig();
+  if (!computeConfig) {
+    return fallbackRealm(prompt);
+  }
+
+  const client = new ZGComputeClient(computeConfig);
+  try {
+    await client.setupProvider(computeConfig.providerAddress);
+  } catch (e: any) {
+    if (!e.message?.includes("already") && !e.message?.includes("exists") && !e.message?.includes("duplicate")) {
+      throw e;
+    }
+  }
+
+  const result = await client.query(
+    `Generate a detailed Eternal Clans realm from this prompt: ${prompt}\n\nReturn JSON with keys: title (string), lore (string, 2-3 sentences), assets (array of {type: "biome"|"npc"|"quest"|"artifact", name: string, description: string}).`,
+    {
+      systemPrompt: "You are an OpenClaw realm architect. Generate rich, unique fantasy game realm content. Return only valid JSON.",
+      temperature: 0.55,
+      maxTokens: 700,
+    }
+  );
+
+  try {
+    const parsed = JSON.parse(result.text);
+    return {
+      title: parsed.title || `${prompt.split(/\s+/).slice(0, 4).join(" ")} Realm`,
+      lore: parsed.lore || result.text.slice(0, 500),
+      assets: Array.isArray(parsed.assets) ? parsed.assets : fallbackRealm(prompt).assets,
+    };
+  } catch {
+    return {
+      title: `${prompt.split(/\s+/).slice(0, 4).join(" ")} Realm`,
+      lore: result.text.slice(0, 500),
+      assets: fallbackRealm(prompt).assets,
+    };
+  }
+}
+
+function fallbackRealm(prompt: string) {
+  return {
+    title: `${prompt.split(/\s+/).slice(0, 5).join(" ")} Realm`,
+    lore: prompt,
+    assets: [
+      { type: "biome", name: "Anchor Biome", description: `A permanent world space shaped by: ${prompt}` },
+      { type: "npc", name: "Memory Warden", description: "An NPC that recalls clan history from 0G Storage." },
+      { type: "quest", name: "First Echo", description: "A starter quest that proves the realm can evolve." },
+      { type: "artifact", name: "Clan Sigil", description: "A tradable identity artifact bound to the clan iNFT." },
+    ],
+  };
 }
 
 function getStorageConfig() {
@@ -112,11 +173,13 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "tokenId and prompt are required" }, { status: 400 });
       }
 
+      const generated = await generateRealmWithInference(body.prompt);
       const realm = await storeRecord("ugc-realm", {
         tokenId: body.tokenId,
         prompt: body.prompt,
-        title: `${body.prompt.split(/\s+/).slice(0, 5).join(" ")} Realm`,
-        assets: ["biome", "npc", "quest", "artifact"],
+        title: generated.title,
+        lore: generated.lore,
+        assets: generated.assets,
       });
 
       return NextResponse.json({
@@ -150,11 +213,13 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "tokenId and proposal are required" }, { status: 400 });
       }
 
+      const generated = body.prompt ? await generateRealmWithInference(body.prompt) : null;
       const evolution = await storeRecord("clan-evolution", {
         tokenId: body.tokenId,
         proposal: body.proposal,
         prompt: body.prompt,
-        executedBy: "owner-wallet",
+        realmGenerated: generated,
+        executedBy: body.executor || "unknown",
       });
 
       return NextResponse.json({

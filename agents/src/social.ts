@@ -57,9 +57,13 @@ export class TelegramClanBot {
     });
 
     if (this.config.chatId) {
-      await this.sendMessage(
-        `0GClawForge Telegram runtime is live for ${this.config.clanName}.`
-      );
+      try {
+        await this.sendMessage(
+          `0GClawForge Telegram runtime is live for ${this.config.clanName}.`
+        );
+      } catch (error) {
+        console.warn("Telegram startup message failed", error);
+      }
     }
 
     if (process.env.TELEGRAM_POLLING_ENABLED !== "false") {

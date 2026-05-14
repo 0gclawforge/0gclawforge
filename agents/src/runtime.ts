@@ -157,7 +157,7 @@ export class ClanRuntimeManager {
       this.lastDepinSummary,
     ].join("\n\n");
 
-    await Promise.all([
+    await Promise.allSettled([
       this.telegramBot?.sendMessage(socialSummary),
       this.discordBot?.postMessage(socialSummary),
     ]);

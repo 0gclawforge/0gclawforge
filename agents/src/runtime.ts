@@ -131,7 +131,7 @@ export class ClanRuntimeManager {
         this.deployment.memoryRootHash,
         `${this.deployment.clanName} ${this.deployment.proposal} ${this.deployment.realmPrompt}`,
         5
-      );
+      ) ?? [];
       if (entries.length > 0) {
         memoryContext = entries.map((e) => `[${e.tags.join(",")}] ${e.content}`).join("\n\n");
       }

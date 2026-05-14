@@ -98,7 +98,7 @@ export class TelegramClanBot {
   private async pollLoop(): Promise<void> {
     while (this.polling) {
       try {
-        const response = await this.call<{ result?: Array<{ update_id: number; message?: { text?: string } }> }>(
+        const response = await this.call<{ result?: Array<{ update_id: number; message?: { text?: string; chat?: { id: number } } }> }>(
           "getUpdates",
           {
             timeout: 25,
@@ -110,10 +110,14 @@ export class TelegramClanBot {
         for (const update of response.result || []) {
           this.offset = update.update_id + 1;
           const text = update.message?.text?.trim();
-          if (!text) continue;
+          const chatId = update.message?.chat?.id;
+          if (!text || !chatId) continue;
           const reply = await this.handleCommand(text);
           if (reply) {
-            await this.sendMessage(reply);
+            await this.call("sendMessage", {
+              chat_id: chatId,
+              text: reply,
+            });
           }
         }
       } catch (error) {

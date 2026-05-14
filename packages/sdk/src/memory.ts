@@ -62,7 +62,7 @@ export class MemoryEngine {
     topK: number = 5
   ): Promise<MemoryEntry[]> {
     const index = await this.loadMemory(rootHash);
-    if (!index || index.entries.length === 0) return [];
+    if (!index || !Array.isArray(index.entries) || index.entries.length === 0) return [];
 
     const keywords = query.toLowerCase().split(/\s+/);
     const scored = index.entries.map((entry) => {

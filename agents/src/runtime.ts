@@ -229,16 +229,13 @@ export class ClanRuntimeManager {
   }
 }
 
-declare global {
-  var __0gclawforgeRuntime: ClanRuntimeManager | undefined;
-}
-
 export function getRuntimeManager(
   computeConfig: ComputeConfig,
   storageConfig: StorageConfig
 ): ClanRuntimeManager {
-  if (!global.__0gclawforgeRuntime) {
-    global.__0gclawforgeRuntime = new ClanRuntimeManager(computeConfig, storageConfig);
+  const g = globalThis as Record<string, unknown>;
+  if (!g.__0gclawforgeRuntime) {
+    g.__0gclawforgeRuntime = new ClanRuntimeManager(computeConfig, storageConfig);
   }
-  return global.__0gclawforgeRuntime;
+  return g.__0gclawforgeRuntime as ClanRuntimeManager;
 }

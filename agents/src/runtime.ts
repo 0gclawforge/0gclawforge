@@ -60,8 +60,13 @@ export class ClanRuntimeManager {
     const handler: SocialMessageHandler = {
       onProposalCreate: async (source, text) => {
         if (!this.deployment) return `Proposal noted but runtime is not deployed: ${text}`;
-        await this.appendMemory(`DAO PROPOSAL (${source}): ${text}`, ["proposal", source]);
         this.deployment.proposal = text;
+        try {
+          await this.appendMemory(`DAO PROPOSAL (${source}): ${text}`, ["proposal", source]);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Unknown storage error";
+          return `Proposal recorded locally but storage failed: ${msg}. Proposal: ${text}`;
+        }
         return `Proposal recorded: ${text}`;
       },
       onQuestRun: async () => {
@@ -226,6 +231,7 @@ export class ClanRuntimeManager {
       ) {
         return;
       }
+      console.warn("0G Compute provider setup failed:", message);
       this.lastQuestOutcome = `Runtime deployed without verified compute: ${message}`;
     }
   }

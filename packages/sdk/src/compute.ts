@@ -34,10 +34,9 @@ export class ZGComputeClient {
     if (this.providerReady) return;
     await this.init();
 
-    const depositAmount = ethers.parseEther(fundAmountOG.toString());
-
+    // addLedger expects balance in 0G units (plain number), not wei
     try {
-      await this.broker!.ledger.addLedger(depositAmount as unknown as number);
+      await this.broker!.ledger.addLedger(fundAmountOG);
     } catch (e: any) {
       if (!e.message?.includes("already") && !e.message?.includes("exists") && !e.message?.includes("duplicate")) {
         throw e;
@@ -52,8 +51,10 @@ export class ZGComputeClient {
       }
     }
 
+    // transferFund expects amount in neuron (bigint)
+    const transferAmount = ethers.parseEther(fundAmountOG.toString());
     try {
-      await this.broker!.ledger.transferFund(providerAddress, "inference", depositAmount);
+      await this.broker!.ledger.transferFund(providerAddress, "inference", transferAmount);
     } catch (e: any) {
       if (!e.message?.includes("already") && !e.message?.includes("exists") && !e.message?.includes("duplicate")) {
         throw e;
@@ -68,6 +69,7 @@ export class ZGComputeClient {
     options: ComputeQueryOptions = {}
   ): Promise<{ text: string; verified: boolean; providerAddress: string }> {
     await this.init();
+    await this.setupProvider(this.config.providerAddress);
     const providerAddress = this.config.providerAddress;
 
     const { endpoint, model } =

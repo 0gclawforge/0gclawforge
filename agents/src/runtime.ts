@@ -59,17 +59,19 @@ export class ClanRuntimeManager {
 
     const handler: SocialMessageHandler = {
       onProposalCreate: async (source, text) => {
+        if (!this.deployment) return `Proposal noted but runtime is not deployed: ${text}`;
         await this.appendMemory(`DAO PROPOSAL (${source}): ${text}`, ["proposal", source]);
-        this.deployment!.proposal = text;
+        this.deployment.proposal = text;
         return `Proposal recorded: ${text}`;
       },
       onQuestRun: async () => {
+        if (!this.deployment) return "Runtime is not deployed yet. Deploy from the dashboard first.";
         const result = await this.runAutonomousCycle();
         return result.lastQuestOutcome || "Quest cycle completed.";
       },
       onDepinSnapshot: async () => {
         await this.updateDepinSummary();
-        return this.lastDepinSummary;
+        return this.lastDepinSummary || "No DePIN data available.";
       },
       onStatus: async () => JSON.stringify(this.getStatus(), null, 2),
     };

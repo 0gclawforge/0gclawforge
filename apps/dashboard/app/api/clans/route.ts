@@ -38,31 +38,36 @@ async function generateRealmWithInference(prompt: string): Promise<{ title: stri
     return fallbackRealm(prompt);
   }
 
-  const client = new ZGComputeClient(computeConfig);
-  await client.setupProvider(computeConfig.providerAddress);
-
-  const result = await client.query(
-    `Generate a detailed Eternal Clans realm from this prompt: ${prompt}\n\nReturn JSON with keys: title (string), lore (string, 2-3 sentences), assets (array of {type: "biome"|"npc"|"quest"|"artifact", name: string, description: string}).`,
-    {
-      systemPrompt: "You are an OpenClaw realm architect. Generate rich, unique fantasy game realm content. Return only valid JSON.",
-      temperature: 0.55,
-      maxTokens: 700,
-    }
-  );
-
   try {
-    const parsed = JSON.parse(result.text);
-    return {
-      title: parsed.title || `${prompt.split(/\s+/).slice(0, 4).join(" ")} Realm`,
-      lore: parsed.lore || result.text.slice(0, 500),
-      assets: Array.isArray(parsed.assets) ? parsed.assets : fallbackRealm(prompt).assets,
-    };
-  } catch {
-    return {
-      title: `${prompt.split(/\s+/).slice(0, 4).join(" ")} Realm`,
-      lore: result.text.slice(0, 500),
-      assets: fallbackRealm(prompt).assets,
-    };
+    const client = new ZGComputeClient(computeConfig);
+    await client.setupProvider(computeConfig.providerAddress);
+
+    const result = await client.query(
+      `Generate a detailed Eternal Clans realm from this prompt: ${prompt}\n\nReturn JSON with keys: title (string), lore (string, 2-3 sentences), assets (array of {type: "biome"|"npc"|"quest"|"artifact", name: string, description: string}).`,
+      {
+        systemPrompt: "You are an OpenClaw realm architect. Generate rich, unique fantasy game realm content. Return only valid JSON.",
+        temperature: 0.55,
+        maxTokens: 700,
+      }
+    );
+
+    try {
+      const parsed = JSON.parse(result.text);
+      return {
+        title: parsed.title || `${prompt.split(/\s+/).slice(0, 4).join(" ")} Realm`,
+        lore: parsed.lore || result.text.slice(0, 500),
+        assets: Array.isArray(parsed.assets) ? parsed.assets : fallbackRealm(prompt).assets,
+      };
+    } catch {
+      return {
+        title: `${prompt.split(/\s+/).slice(0, 4).join(" ")} Realm`,
+        lore: result.text.slice(0, 500),
+        assets: fallbackRealm(prompt).assets,
+      };
+    }
+  } catch (error) {
+    console.error("0G Compute realm generation failed, using fallback realm", error);
+    return fallbackRealm(prompt);
   }
 }
 
@@ -231,13 +236,6 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown clan API error";
     console.error("Clan API error", err);
-    return NextResponse.json(
-      {
-        error: message,
-        name: err instanceof Error ? err.name : typeof err,
-        stack: err instanceof Error ? err.stack : String(err),
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

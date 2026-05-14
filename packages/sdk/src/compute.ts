@@ -37,7 +37,7 @@ export class ZGComputeClient {
     const depositAmount = ethers.parseEther(fundAmountOG.toString());
 
     try {
-      await this.broker!.ledger.addLedger(depositAmount);
+      await this.broker!.ledger.addLedger(depositAmount as unknown as number);
     } catch (e: any) {
       if (!e.message?.includes("already") && !e.message?.includes("exists") && !e.message?.includes("duplicate")) {
         throw e;

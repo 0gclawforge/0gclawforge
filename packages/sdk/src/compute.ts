@@ -29,39 +29,67 @@ export class ZGComputeClient {
 
   async setupProvider(
     providerAddress: string,
-    fundAmountOG: number = 0.1
+    fundAmountOG: number = 3
   ): Promise<void> {
     if (this.providerReady) return;
     await this.init();
 
-    // addLedger expects balance in 0G units (plain number), not wei
+    // Check if a ledger already exists before trying to create one
+    let hasLedger = false;
     try {
-      await this.broker!.ledger.addLedger(fundAmountOG);
-    } catch (e: any) {
-      if (!e.message?.includes("already") && !e.message?.includes("exists") && !e.message?.includes("duplicate")) {
-        throw e;
+      const ledger = await this.broker!.ledger.getLedger();
+      hasLedger = Boolean(ledger);
+    } catch {
+      hasLedger = false;
+    }
+
+    if (!hasLedger) {
+      // addLedger expects balance in 0G units (plain number), minimum 3
+      try {
+        await this.broker!.ledger.addLedger(fundAmountOG);
+      } catch (e: any) {
+        if (!this.isIgnorableSetupError(e)) throw e;
       }
     }
 
     try {
       await this.broker!.inference.acknowledgeProviderSigner(providerAddress);
     } catch (e: any) {
-      if (!e.message?.includes("already") && !e.message?.includes("exists") && !e.message?.includes("duplicate")) {
-        throw e;
-      }
+      if (!this.isIgnorableSetupError(e)) throw e;
     }
 
-    // transferFund expects amount in neuron (bigint)
-    const transferAmount = ethers.parseEther(fundAmountOG.toString());
+    // Only transfer funds if provider has no balance yet
+    let providerFunded = false;
     try {
-      await this.broker!.ledger.transferFund(providerAddress, "inference", transferAmount);
-    } catch (e: any) {
-      if (!e.message?.includes("already") && !e.message?.includes("exists") && !e.message?.includes("duplicate")) {
-        throw e;
+      const balances = await this.broker!.ledger.getProvidersWithBalance("inference");
+      providerFunded = balances.some(
+        ([addr, balance]: [string, bigint, bigint]) =>
+          addr.toLowerCase() === providerAddress.toLowerCase() && balance > BigInt(0)
+      );
+    } catch {
+      // If we can't check, try the transfer anyway
+    }
+
+    if (!providerFunded) {
+      const transferAmount = ethers.parseEther(fundAmountOG.toString());
+      try {
+        await this.broker!.ledger.transferFund(providerAddress, "inference", transferAmount);
+      } catch (e: any) {
+        if (!this.isIgnorableSetupError(e)) throw e;
       }
     }
 
     this.providerReady = true;
+  }
+
+  private isIgnorableSetupError(e: any): boolean {
+    const msg = (e?.message ?? "").toLowerCase();
+    return (
+      msg.includes("already") ||
+      msg.includes("exists") ||
+      msg.includes("duplicate") ||
+      msg.includes("insufficient")
+    );
   }
 
   async query(

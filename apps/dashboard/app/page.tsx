@@ -96,6 +96,55 @@ export default function HomePage() {
     void refreshRuntimeStatus();
   }, []);
 
+  // Auto-load token ID and clan state for the connected wallet
+  useEffect(() => {
+    if (!isConnected || !address || !publicClient || !contractAddress) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const balance = await publicClient.readContract({
+          address: contractAddress,
+          abi: agentInftAbi,
+          functionName: "balanceOf",
+          args: [address],
+        });
+        if (cancelled || balance === BigInt(0)) return;
+
+        // Load the most recently minted token (last index)
+        const lastIndex = balance - BigInt(1);
+        const ownedTokenId = await publicClient.readContract({
+          address: contractAddress,
+          abi: agentInftAbi,
+          functionName: "tokenOfOwnerByIndex",
+          args: [address, lastIndex],
+        });
+        if (cancelled) return;
+
+        const tid = ownedTokenId.toString();
+        setTokenId(tid);
+
+        // Load clan state for this token
+        const state = await publicClient.readContract({
+          address: contractAddress,
+          abi: agentInftAbi,
+          functionName: "getClanState",
+          args: [ownedTokenId],
+        });
+        if (cancelled) return;
+
+        if (state.memoryRootURI) setMemoryRoot(state.memoryRootURI);
+        if (state.realmRootURI) setRealmRoot(state.realmRootURI);
+        if (state.voteRootURI) setVoteRoot(state.voteRootURI);
+        setRealmCount(Number(state.realmCount));
+      } catch {
+        // Contract may not exist on this chain or wallet has no tokens
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [isConnected, address, publicClient, contractAddress]);
+
   const assertReady = () => {
     if (!isConnected || !address) {
       throw new Error("Connect a wallet first.");

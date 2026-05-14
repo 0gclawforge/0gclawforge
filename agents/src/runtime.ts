@@ -157,10 +157,15 @@ export class ClanRuntimeManager {
       this.lastDepinSummary,
     ].join("\n\n");
 
-    await Promise.allSettled([
+    const results = await Promise.allSettled([
       this.telegramBot?.sendMessage(socialSummary),
       this.discordBot?.postMessage(socialSummary),
     ]);
+    for (const result of results) {
+      if (result.status === "rejected") {
+        console.warn("Social broadcast failed:", result.reason);
+      }
+    }
 
     return this.getStatus();
   }

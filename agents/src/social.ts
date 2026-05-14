@@ -37,6 +37,7 @@ export class TelegramClanBot {
   private polling = false;
   private abortController: AbortController | null = null;
   private username: string | null = null;
+  private learnedChatId: string | null = null;
 
   constructor(
     private readonly config: TelegramDeploymentConfig,
@@ -72,9 +73,10 @@ export class TelegramClanBot {
   }
 
   async sendMessage(text: string): Promise<void> {
-    if (!this.config.chatId) return;
+    const targetChat = this.learnedChatId || this.config.chatId;
+    if (!targetChat) return;
     await this.call("sendMessage", {
-      chat_id: this.config.chatId,
+      chat_id: targetChat,
       text,
     });
   }
@@ -112,12 +114,30 @@ export class TelegramClanBot {
           const text = update.message?.text?.trim();
           const chatId = update.message?.chat?.id;
           if (!text || !chatId) continue;
-          const reply = await this.handleCommand(text);
-          if (reply) {
-            await this.call("sendMessage", {
-              chat_id: chatId,
-              text: reply,
-            });
+
+          // Auto-learn the chat ID so broadcast messages reach the right place
+          if (!this.learnedChatId) {
+            this.learnedChatId = String(chatId);
+          }
+
+          try {
+            const reply = await this.handleCommand(text);
+            if (reply) {
+              await this.call("sendMessage", {
+                chat_id: chatId,
+                text: reply,
+              });
+            }
+          } catch (error) {
+            const errMsg = error instanceof Error ? error.message : "Unknown error";
+            try {
+              await this.call("sendMessage", {
+                chat_id: chatId,
+                text: `Command failed: ${errMsg}`,
+              });
+            } catch {
+              // If even the error reply fails, just continue polling
+            }
           }
         }
       } catch (error) {
@@ -128,12 +148,24 @@ export class TelegramClanBot {
   }
 
   private async handleCommand(text: string): Promise<string | null> {
-    if (text.startsWith("/status")) return this.handler.onStatus("telegram");
-    if (text.startsWith("/quest")) return this.handler.onQuestRun("telegram");
-    if (text.startsWith("/depin")) return this.handler.onDepinSnapshot("telegram");
-    if (text.startsWith("/proposal")) {
-      const proposal = text.replace("/proposal", "").trim();
+    // Strip @botname suffix so commands work in groups
+    const cleaned = text.replace(/@\S+/, "").trim();
+    if (cleaned.startsWith("/status")) return this.handler.onStatus("telegram");
+    if (cleaned.startsWith("/quest")) return this.handler.onQuestRun("telegram");
+    if (cleaned.startsWith("/depin")) return this.handler.onDepinSnapshot("telegram");
+    if (cleaned.startsWith("/proposal")) {
+      const proposal = cleaned.replace("/proposal", "").trim();
       return this.handler.onProposalCreate("telegram", proposal || "New proposal from Telegram");
+    }
+    if (cleaned.startsWith("/start") || cleaned.startsWith("/help")) {
+      return [
+        `0GClawForge Clan Bot (${this.config.clanName})`,
+        "",
+        "/status - Show clan runtime status",
+        "/quest - Run an autonomous quest cycle",
+        "/depin - Fetch live WeatherXM snapshot",
+        "/proposal <text> - Create a DAO proposal",
+      ].join("\n");
     }
     return null;
   }

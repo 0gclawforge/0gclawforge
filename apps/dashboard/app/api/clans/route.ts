@@ -230,6 +230,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unsupported clan action" }, { status: 400 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown clan API error";
+    console.error("Clan API error", err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

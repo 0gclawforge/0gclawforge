@@ -39,13 +39,7 @@ async function generateRealmWithInference(prompt: string): Promise<{ title: stri
   }
 
   const client = new ZGComputeClient(computeConfig);
-  try {
-    await client.setupProvider(computeConfig.providerAddress);
-  } catch (e: any) {
-    if (!e.message?.includes("already") && !e.message?.includes("exists") && !e.message?.includes("duplicate")) {
-      throw e;
-    }
-  }
+  await client.setupProvider(computeConfig.providerAddress);
 
   const result = await client.query(
     `Generate a detailed Eternal Clans realm from this prompt: ${prompt}\n\nReturn JSON with keys: title (string), lore (string, 2-3 sentences), assets (array of {type: "biome"|"npc"|"quest"|"artifact", name: string, description: string}).`,

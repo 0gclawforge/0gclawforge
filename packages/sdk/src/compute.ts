@@ -25,15 +25,42 @@ export class ZGComputeClient {
     return await this.broker!.inference.listService();
   }
 
+  private providerReady = false;
+
   async setupProvider(
     providerAddress: string,
-    fundAmountOG: number = 1.0
+    fundAmountOG: number = 0.1
   ): Promise<void> {
+    if (this.providerReady) return;
     await this.init();
-    await this.broker!.ledger.addLedger(3);
-    await this.broker!.inference.acknowledgeProviderSigner(providerAddress);
-    const amount = ethers.parseEther(fundAmountOG.toString());
-    await this.broker!.ledger.transferFund(providerAddress, "inference", amount);
+
+    try {
+      await this.broker!.ledger.addLedger(3);
+    } catch (e: any) {
+      if (!e.message?.includes("already") && !e.message?.includes("exists") && !e.message?.includes("duplicate")) {
+        throw e;
+      }
+    }
+
+    try {
+      await this.broker!.inference.acknowledgeProviderSigner(providerAddress);
+    } catch (e: any) {
+      if (!e.message?.includes("already") && !e.message?.includes("exists") && !e.message?.includes("duplicate")) {
+        throw e;
+      }
+    }
+
+    try {
+      const amount = ethers.parseEther(fundAmountOG.toString());
+      await this.broker!.ledger.transferFund(providerAddress, "inference", amount);
+    } catch (e: any) {
+      if (!e.message?.includes("already") && !e.message?.includes("exists") && !e.message?.includes("duplicate") && !e.message?.includes("insufficient")) {
+        throw e;
+      }
+      // If insufficient funds or already funded, continue — the ledger may already have balance
+    }
+
+    this.providerReady = true;
   }
 
   async query(

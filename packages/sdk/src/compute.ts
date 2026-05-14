@@ -34,8 +34,10 @@ export class ZGComputeClient {
     if (this.providerReady) return;
     await this.init();
 
+    const depositAmount = ethers.parseEther(fundAmountOG.toString());
+
     try {
-      await this.broker!.ledger.addLedger(3);
+      await this.broker!.ledger.addLedger(depositAmount);
     } catch (e: any) {
       if (!e.message?.includes("already") && !e.message?.includes("exists") && !e.message?.includes("duplicate")) {
         throw e;
@@ -51,13 +53,11 @@ export class ZGComputeClient {
     }
 
     try {
-      const amount = ethers.parseEther(fundAmountOG.toString());
-      await this.broker!.ledger.transferFund(providerAddress, "inference", amount);
+      await this.broker!.ledger.transferFund(providerAddress, "inference", depositAmount);
     } catch (e: any) {
-      if (!e.message?.includes("already") && !e.message?.includes("exists") && !e.message?.includes("duplicate") && !e.message?.includes("insufficient")) {
+      if (!e.message?.includes("already") && !e.message?.includes("exists") && !e.message?.includes("duplicate")) {
         throw e;
       }
-      // If insufficient funds or already funded, continue — the ledger may already have balance
     }
 
     this.providerReady = true;

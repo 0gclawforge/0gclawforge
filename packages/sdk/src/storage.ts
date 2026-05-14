@@ -2,6 +2,21 @@ import { Indexer, MemData } from "@0gfoundation/0g-ts-sdk";
 import { ethers } from "ethers";
 import type { StorageConfig, UploadResult } from "./types";
 
+async function resolveUploadOptions(provider: ethers.JsonRpcProvider): Promise<{
+  gasPrice?: bigint;
+}> {
+  try {
+    const gasPriceHex = (await provider.send("eth_gasPrice", [])) as string | null;
+    if (typeof gasPriceHex === "string" && gasPriceHex.startsWith("0x")) {
+      return { gasPrice: BigInt(gasPriceHex) };
+    }
+  } catch {
+    // Fall back to the SDK default fee lookup if the raw RPC call fails.
+  }
+
+  return {};
+}
+
 export async function uploadToStorage(
   data: Buffer | string,
   config: StorageConfig
@@ -15,8 +30,9 @@ export async function uploadToStorage(
       ? new TextEncoder().encode(data)
       : new Uint8Array(data);
   const memData = new MemData(bytes);
+  const uploadOpts = await resolveUploadOptions(provider);
 
-  const [tx, err] = await indexer.upload(memData, config.rpcUrl, signer);
+  const [tx, err] = await indexer.upload(memData, config.rpcUrl, signer, undefined, undefined, uploadOpts);
   if (err !== null) throw new Error(`0G Storage upload failed: ${err}`);
 
   const [tree, treeErr] = await memData.merkleTree();

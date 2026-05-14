@@ -89,7 +89,12 @@ export class ClanRuntimeManager {
       void this.runAutonomousCycle();
     }, intervalMs);
 
-    await this.runAutonomousCycle();
+    try {
+      await this.runAutonomousCycle();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown autonomous cycle error";
+      this.lastQuestOutcome = `Runtime deployed, but the initial autonomous cycle failed: ${message}`;
+    }
     return this.getStatus();
   }
 
@@ -132,7 +137,7 @@ export class ClanRuntimeManager {
       }
     }
 
-    const quest = await this.questEngine.runQuest({
+    const quest = await this.runQuestWithFallback({
       clanName: this.deployment.clanName,
       realmPrompt: this.deployment.realmPrompt,
       proposal: this.deployment.proposal,
@@ -162,7 +167,12 @@ export class ClanRuntimeManager {
 
   private async updateDepinSummary(): Promise<void> {
     if (!this.deployment) return;
-    this.lastDepinSummary = await this.depin.summarize(this.deployment.depinQuery);
+    try {
+      this.lastDepinSummary = await this.depin.summarize(this.deployment.depinQuery);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown DePIN fetch error";
+      this.lastDepinSummary = `WeatherXM data unavailable: ${message}`;
+    }
   }
 
   private async appendMemory(content: string, tags: string[]): Promise<void> {
@@ -177,6 +187,26 @@ export class ClanRuntimeManager {
     this.deployment.memoryRootHash = result.rootHash;
   }
 
+  private async runQuestWithFallback(input: {
+    clanName: string;
+    realmPrompt: string;
+    proposal: string;
+    depinSummary: string;
+    memoryContext: string;
+  }) {
+    try {
+      return await this.questEngine.runQuest(input);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown compute quest error";
+      return {
+        title: "Autonomous quest",
+        summary: `Verified compute unavailable. Using degraded runtime mode. ${message}`,
+        actions: [],
+        outcome: "Runtime stayed online, but autonomous quest generation is unavailable until 0G Compute succeeds.",
+      };
+    }
+  }
+
   private async prepareComputeProvider(): Promise<void> {
     try {
       await this.inference.ensureProviderReady();
@@ -189,7 +219,7 @@ export class ClanRuntimeManager {
       ) {
         return;
       }
-      throw error;
+      this.lastQuestOutcome = `Runtime deployed without verified compute: ${message}`;
     }
   }
 }

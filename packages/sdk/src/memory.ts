@@ -29,6 +29,11 @@ export class MemoryEngine {
       ? ((await this.loadMemory(currentRootHash)) ?? this.createEmptyIndex(agentId))
       : this.createEmptyIndex(agentId);
 
+    // Guard against stored indexes with missing or corrupted entries
+    if (!Array.isArray(index.entries)) {
+      index.entries = [];
+    }
+
     const newEntry: MemoryEntry = {
       ...entry,
       id: `mem_${agentId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,

@@ -832,7 +832,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
           </div>
         </header>
 
-        <section className="grid gap-5 xl:grid-cols-[minmax(0,680px)_1fr]">
+        <section className="grid gap-5 lg:grid-cols-[minmax(0,680px)_1fr]">
           <div className="space-y-5">
             <div className="overflow-x-auto rounded-md border border-white/10 bg-black/35 p-4 shadow-2xl shadow-black/40">
               <div
@@ -885,7 +885,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
             </Panel>
           </div>
 
-          <aside className="fantasy-scrollbar space-y-5 xl:sticky xl:top-20 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto xl:pr-2">
+          <aside className="fantasy-scrollbar space-y-5 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-2">
             <Panel title="Realm Versions" icon={Crown}>
               {realmHistory.length === 0 ? (
                 <p className="text-sm text-stone">No version history is available for this realm yet.</p>

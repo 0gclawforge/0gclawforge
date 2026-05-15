@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import {
   ArrowLeft,
   BookOpen,
+  Bot,
   Coins,
   Crown,
   DoorOpen,
@@ -12,10 +13,13 @@ import {
   MessageSquare,
   Loader2,
   Package,
+  Play,
   Save,
   ScrollText,
+  Send,
   ShieldCheck,
   Sparkles,
+  Square,
   Swords,
   Trophy,
   type LucideIcon,
@@ -413,6 +417,11 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
   const [toast, setToast] = useState("");
+  const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "clan"; text: string }>>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [autoMode, setAutoMode] = useState(false);
+  const [autoLog, setAutoLog] = useState<string[]>([]);
 
   const clanState = normalizeClanState(chainStateData) ?? apiClanState;
   const realmPayload = realm?.payload ?? null;
@@ -784,6 +793,71 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
     }
   };
 
+  const sendChatMessage = async () => {
+    if (!chatInput.trim() || chatLoading || !gameState) return;
+    const userMsg = chatInput.trim();
+    setChatInput("");
+    setChatMessages((prev) => [...prev, { role: "user", text: userMsg }]);
+    setChatLoading(true);
+
+    try {
+      const response = await fetch(`/api/realm/${tokenId}/chat?chainId=${chainId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: userMsg,
+          stateSummary: `HP ${gameState.hp}/${gameState.maxHp}, Level ${gameState.level}, Gold ${gameState.gold}, XP ${gameState.xp}, Boss defeated: ${gameState.bossDefeated ? "yes" : "no"}, Quests done: ${gameState.questsCompleted.join(", ") || "none"}, Inventory: ${gameState.inventory.map((i) => i.name).join(", ") || "none"}`,
+          recentLog: gameState.gameLog.slice(-5),
+          history: chatMessages.slice(-6),
+        }),
+      });
+      const payload = (await response.json()) as { reply?: string; error?: string; verified?: boolean };
+      const reply = payload.reply || payload.error || "The clan advisor is silent.";
+      setChatMessages((prev) => [...prev, { role: "clan", text: reply }]);
+    } catch {
+      setChatMessages((prev) => [...prev, { role: "clan", text: "Failed to reach 0G Compute. Try again." }]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  // Autonomous clan cycle
+  useEffect(() => {
+    if (!autoMode || !gameState || !realmPayload) return;
+
+    const runAutoCycle = async () => {
+      const actions = [
+        `Scouting the realm "${realmPayload.title}"...`,
+        `Analyzing ${realmPayload.assets.length} realm assets for threats...`,
+        `Checking quest progress: ${gameState.questsCompleted.length} completed.`,
+      ];
+      const action = actions[Math.floor(Math.random() * actions.length)];
+      setAutoLog((prev) => [...prev.slice(-9), `[${new Date().toLocaleTimeString()}] ${action}`]);
+
+      try {
+        const response = await fetch(`/api/realm/${tokenId}/chat?chainId=${chainId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: "As the autonomous clan advisor, give a brief strategic update on what the clan should focus on next. Consider current HP, quest progress, and boss status.",
+            stateSummary: `HP ${gameState.hp}/${gameState.maxHp}, Level ${gameState.level}, Gold ${gameState.gold}, Boss defeated: ${gameState.bossDefeated ? "yes" : "no"}, Quests done: ${gameState.questsCompleted.length}/${realmPayload.assets.filter((a) => a.type === "quest").length}`,
+            recentLog: gameState.gameLog.slice(-3),
+          }),
+        });
+        const payload = (await response.json()) as { reply?: string; error?: string };
+        const update = payload.reply || payload.error || "No update available.";
+        setAutoLog((prev) => [...prev.slice(-9), `[${new Date().toLocaleTimeString()}] Advisor: ${update}`]);
+        addLog(`Clan Advisor: ${update}`);
+      } catch {
+        setAutoLog((prev) => [...prev.slice(-9), `[${new Date().toLocaleTimeString()}] Compute unreachable.`]);
+      }
+    };
+
+    void runAutoCycle();
+    const interval = setInterval(() => void runAutoCycle(), 45_000);
+    return () => clearInterval(interval);
+  }, [autoMode, gameState?.bossDefeated, gameState?.questsCompleted.length]);
+
   if (loading) {
     return (
       <main className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-6">
@@ -979,6 +1053,67 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
                   : "Connect as the clan owner to enable progress saves. Movement, combat, and NPC interactions never require a wallet transaction."}
               </p>
               {saveStatus && <p className="break-words rounded-md border border-white/10 bg-black/25 p-3 font-mono text-xs text-parchment">{saveStatus}</p>}
+            </Panel>
+
+            <Panel title="Clan Chat" icon={MessageSquare}>
+              <div className="fantasy-scrollbar max-h-52 space-y-2 overflow-y-auto pr-2">
+                {chatMessages.length === 0 && (
+                  <p className="text-sm text-stone">Ask your Clan Advisor for help with quests, combat, or strategy. Powered by live 0G Compute.</p>
+                )}
+                {chatMessages.map((msg, i) => (
+                  <div key={i} className={`rounded-md border p-2.5 text-sm leading-5 ${msg.role === "user" ? "border-white/10 bg-black/25 text-parchment" : "border-gold/20 bg-gold/5 text-stone"}`}>
+                    <span className="font-bold text-gold">{msg.role === "user" ? "You" : "Clan AI"}:</span> {msg.text}
+                  </div>
+                ))}
+                {chatLoading && (
+                  <div className="flex items-center gap-2 text-sm text-stone">
+                    <Loader2 className="h-3 w-3 animate-spin text-gold" />
+                    Querying 0G Compute...
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") void sendChatMessage(); }}
+                  placeholder="Ask the clan advisor..."
+                  className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/25 px-3 py-2 text-sm text-parchment outline-none focus:border-gold"
+                />
+                <button
+                  onClick={() => void sendChatMessage()}
+                  disabled={chatLoading || !chatInput.trim()}
+                  className="rounded-md bg-gold px-3 py-2 text-sm font-semibold text-obsidian disabled:opacity-60"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </div>
+            </Panel>
+
+            <Panel title="Autonomous Clan" icon={Bot}>
+              <p className="text-sm leading-6 text-stone">
+                {autoMode
+                  ? "The clan advisor is running autonomously, providing strategic updates every 45 seconds via 0G Compute."
+                  : "Enable autonomous mode to let the clan AI analyze your realm and provide periodic strategic guidance."}
+              </p>
+              <button
+                onClick={() => setAutoMode((prev) => !prev)}
+                className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold ${
+                  autoMode
+                    ? "border border-ember/40 bg-ember/10 text-ember"
+                    : "bg-gold text-obsidian"
+                }`}
+              >
+                {autoMode ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                {autoMode ? "Stop Autonomous Mode" : "Start Autonomous Mode"}
+              </button>
+              {autoLog.length > 0 && (
+                <div className="fantasy-scrollbar max-h-40 space-y-1 overflow-y-auto pr-2 font-mono text-xs leading-5 text-stone">
+                  {autoLog.map((entry, i) => (
+                    <p key={i}>{entry}</p>
+                  ))}
+                </div>
+              )}
             </Panel>
           </aside>
         </section>

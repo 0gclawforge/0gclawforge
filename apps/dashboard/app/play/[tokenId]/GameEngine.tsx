@@ -34,6 +34,7 @@ import type {
   RealmAsset,
   RealmPayload,
   RealmRecord,
+  RealmVersionSummary,
   SaveProgressPayload,
   Tile,
 } from "./types";
@@ -316,6 +317,7 @@ function placeExit(grid: Tile[][]) {
 export function GameEngine({ tokenId }: { tokenId: string }) {
   const searchParams = useSearchParams();
   const forcedSpectator = searchParams.get("spectator") === "1";
+  const selectedRealmRoot = searchParams.get("realmRoot") || "";
   const chainId = useChainId();
   const { address, isConnected } = useAccount();
   const { writeContractAsync } = useWriteContract();
@@ -343,6 +345,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
   });
 
   const [realm, setRealm] = useState<RealmRecord | null>(null);
+  const [realmHistory, setRealmHistory] = useState<RealmVersionSummary[]>([]);
   const [apiClanState, setApiClanState] = useState<ClanState | null>(null);
   const [grid, setGrid] = useState<Tile[][] | null>(null);
   const [theme, setTheme] = useState<BiomeTheme>(themes.default);
@@ -371,11 +374,13 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
       setLoading(true);
       setLoadError("");
       try {
-        const response = await fetch(`/api/realm/${tokenId}?chainId=${chainId}`, { cache: "no-store" });
+        const realmQuery = selectedRealmRoot ? `&realmRoot=${encodeURIComponent(selectedRealmRoot)}` : "";
+        const response = await fetch(`/api/realm/${tokenId}?chainId=${chainId}${realmQuery}`, { cache: "no-store" });
         const payload = (await response.json()) as RealmApiResponse & { error?: string };
         if (!response.ok) throw new Error(payload.error || "Failed to load realm");
         if (cancelled) return;
         setRealm(unwrapRealm(payload.realm));
+        setRealmHistory(payload.history ?? []);
         setApiClanState(payload.clanState);
       } catch (error) {
         if (!cancelled) {
@@ -396,7 +401,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [chainId, tokenId]);
+  }, [chainId, selectedRealmRoot, tokenId]);
 
   useEffect(() => {
     if (!realmPayload) return;
@@ -783,6 +788,34 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
           </div>
 
           <aside className="space-y-5">
+            <Panel title="Realm Versions" icon={Crown}>
+              {realmHistory.length === 0 ? (
+                <p className="text-sm text-stone">No version history is available for this realm yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {realmHistory.map((version) => (
+                    <a
+                      key={version.rootHash}
+                      href={version.current ? `/play/${tokenId}` : `/play/${tokenId}?realmRoot=${encodeURIComponent(version.rootHash)}`}
+                      className={`block rounded-md border px-3 py-3 transition ${
+                        (selectedRealmRoot ? version.rootHash === selectedRealmRoot : version.current)
+                          ? "border-gold bg-gold/10"
+                          : "border-white/10 bg-black/20 hover:border-gold/40"
+                      }`}
+                    >
+                      <p className="text-sm font-semibold text-parchment">Version {version.version}</p>
+                      <p className="mt-1 text-xs text-stone">{version.title}</p>
+                    </a>
+                  ))}
+                </div>
+              )}
+              {clanState && clanState.realmCount > realmHistory.length && (
+                <p className="text-xs leading-5 text-stone">
+                  Some earlier realm versions cannot be selected because they were created before version tracking was added.
+                </p>
+              )}
+            </Panel>
+
             <Panel title="How to Play" icon={ScrollText}>
               <div className="space-y-3 text-sm leading-6 text-stone">
                 <p>Move one tile at a time using <span className="text-parchment">WASD</span> or the <span className="text-parchment">arrow keys</span>.</p>

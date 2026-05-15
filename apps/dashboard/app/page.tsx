@@ -343,6 +343,7 @@ export default function HomePage() {
         tokenId,
         prompt: realmPrompt,
         currentRealmCount: realmCount,
+        currentRealmRootURI: realmRoot,
       });
 
       setStatus({ kind: "working", message: "Waiting for wallet signature to update realm root..." });
@@ -357,6 +358,32 @@ export default function HomePage() {
       setRealmCount(stored.realmCount);
       updateOwnedClan(tokenId, { realmRootURI: stored.realmRootURI, realmCount: stored.realmCount });
       return { kind: "success", message: "Realm root updated on-chain.", txHash: hash };
+    });
+
+  const regenerateRealm = () =>
+    run("Regenerating realm from prompt...", async () => {
+      assertReady();
+      if (!tokenId) throw new Error("Enter the clan token ID first.");
+      const stored = await postClanAction<{ realmRootURI: string; realmCount: number }>({
+        action: "storeRealm",
+        tokenId,
+        prompt: realmPrompt,
+        currentRealmCount: realmCount,
+        currentRealmRootURI: realmRoot,
+      });
+
+      setStatus({ kind: "working", message: "Waiting for wallet signature to replace the current realm root..." });
+      const hash = await writeContractAsync({
+        address: contractAddress!,
+        abi: agentInftAbi,
+        functionName: "updateRealmRoot",
+        args: [BigInt(tokenId), stored.realmRootURI, BigInt(stored.realmCount), "0x"],
+      });
+
+      setRealmRoot(stored.realmRootURI);
+      setRealmCount(stored.realmCount);
+      updateOwnedClan(tokenId, { realmRootURI: stored.realmRootURI, realmCount: stored.realmCount });
+      return { kind: "success", message: "Realm regenerated and root updated on-chain.", txHash: hash };
     });
 
   const storeVote = () =>
@@ -615,6 +642,7 @@ export default function HomePage() {
               setSalePrice={setSalePrice}
               mintClan={mintClan}
               storeRealm={storeRealm}
+              regenerateRealm={regenerateRealm}
               storeVote={storeVote}
               executeEvolution={executeEvolution}
               listClan={listClan}
@@ -675,6 +703,7 @@ function Workspace(props: {
   setSalePrice: (value: string) => void;
   mintClan: () => void;
   storeRealm: () => void;
+  regenerateRealm: () => void;
   storeVote: () => void;
   executeEvolution: () => void;
   listClan: () => void;
@@ -714,7 +743,20 @@ function Workspace(props: {
       <Panel title="Create Permanent UGC Realm" icon={Database}>
         <TextInput label="Clan token ID" value={props.tokenId} onChange={props.setTokenId} />
         <TextArea label="OpenClaw realm prompt" value={props.realmPrompt} onChange={props.setRealmPrompt} />
-        <ActionButton onClick={props.storeRealm} busy={props.busy} label="Store realm and update root" />
+        <div className="flex flex-wrap gap-3">
+          <ActionButton onClick={props.storeRealm} busy={props.busy} label="Store realm and update root" />
+          <button
+            onClick={props.regenerateRealm}
+            disabled={props.busy}
+            className="inline-flex items-center gap-2 rounded-md border border-gold/40 px-4 py-3 text-sm font-bold text-gold disabled:opacity-60"
+          >
+            Regenerate Realm
+          </button>
+        </div>
+        <p className="text-xs leading-5 text-stone">
+          `Regenerate Realm` creates a fresh playable realm from the current prompt and replaces the clan's active realm root.
+          Older 0G realm records remain preserved in storage, and the clan memory root is not erased by regeneration.
+        </p>
         {props.realmRoot && props.tokenId && (
           <a
             href={`/play/${props.tokenId}`}
@@ -902,7 +944,7 @@ function OwnedClansPanel({
             >
               <p className="text-sm font-bold text-parchment">Clan #{clan.tokenId}</p>
               <p className="mt-1 text-xs text-stone">
-                {clan.realmRootURI ? `${clan.realmCount} playable realm${clan.realmCount === 1 ? "" : "s"}` : "No realm stored yet"}
+                {clan.realmRootURI ? `${clan.realmCount} realm version${clan.realmCount === 1 ? "" : "s"}` : "No realm stored yet"}
               </p>
             </button>
           ))}

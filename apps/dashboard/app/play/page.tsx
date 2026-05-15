@@ -205,7 +205,7 @@ export default function PlayDiscoveryPage() {
                 >
                   <div className="mb-4 flex items-center justify-between">
                     <span className="rounded bg-gold/10 px-2 py-1 font-mono text-xs text-gold">Clan #{id}</span>
-                    <span className="font-mono text-xs text-stone">{clanState.realmCount} realms</span>
+                    <span className="font-mono text-xs text-stone">{clanState.realmCount} version{clanState.realmCount === 1 ? "" : "s"}</span>
                   </div>
                   <h3 className="text-xl font-black text-parchment">{realm.payload.title}</h3>
                   <p className="mt-3 line-clamp-3 text-sm leading-6 text-stone">{realm.payload.lore}</p>

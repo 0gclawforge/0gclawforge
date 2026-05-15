@@ -14,6 +14,8 @@ export interface RealmPayload {
   title: string;
   lore: string;
   assets: RealmAsset[];
+  version?: number;
+  previousRealmRootURI?: string;
   layout?: {
     style: "grove" | "labyrinth" | "corridor" | "sanctum";
     wallDensity: number;
@@ -44,6 +46,15 @@ export interface ClanState {
 export interface RealmApiResponse {
   realm: RealmRecord;
   clanState: ClanState;
+  history?: RealmVersionSummary[];
+}
+
+export interface RealmVersionSummary {
+  rootHash: string;
+  title: string;
+  createdAt: number;
+  version: number;
+  current: boolean;
 }
 
 export interface InventoryItem {

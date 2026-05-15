@@ -90,6 +90,16 @@ function assertTokenId(tokenId: string) {
   }
 }
 
+async function downloadRealmRecord(rootHash: string, tokenId: string) {
+  const tmpPath = join(tmpdir(), `0gclawforge-realm-${tokenId}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
+  try {
+    await downloadFromStorage(rootHash, tmpPath, getStorageConfig(false));
+    return JSON.parse(await readFile(tmpPath, "utf8"));
+  } finally {
+    await rm(tmpPath, { force: true });
+  }
+}
+
 export async function GET(req: NextRequest, { params }: { params: { tokenId: string } }) {
   const { tokenId } = params;
 
@@ -99,20 +109,34 @@ export async function GET(req: NextRequest, { params }: { params: { tokenId: str
     const provider = new ethers.JsonRpcProvider(rpcUrl);
     const contract = new ethers.Contract(address, agentInftAbi, provider);
     const clanState = normalizeClanState(await contract.getClanState(BigInt(tokenId)));
+    const requestedRealmRoot = req.nextUrl.searchParams.get("realmRoot") || "";
 
-    if (!clanState.realmRootURI) {
+    if (!requestedRealmRoot && !clanState.realmRootURI) {
       return NextResponse.json({ error: "Clan has no realm root yet", clanState }, { status: 404 });
     }
 
-    const tmpPath = join(tmpdir(), `0gclawforge-realm-${tokenId}-${Date.now()}.json`);
+    const activeRoot = requestedRealmRoot || clanState.realmRootURI;
+    const realm = await downloadRealmRecord(activeRoot, tokenId);
+    const history: Array<{ rootHash: string; title: string; createdAt: number; version: number; current: boolean }> = [];
+    const seen = new Set<string>();
+    let nextRoot = activeRoot;
+    let depth = 0;
 
-    try {
-      await downloadFromStorage(clanState.realmRootURI, tmpPath, getStorageConfig(false));
-      const realm = JSON.parse(await readFile(tmpPath, "utf8"));
-      return NextResponse.json({ realm, clanState });
-    } finally {
-      await rm(tmpPath, { force: true });
+    while (nextRoot && !seen.has(nextRoot) && depth < 12) {
+      seen.add(nextRoot);
+      const record = depth === 0 ? realm : await downloadRealmRecord(nextRoot, tokenId);
+      history.push({
+        rootHash: nextRoot,
+        title: record?.payload?.title || `Realm Version ${history.length + 1}`,
+        createdAt: record?.createdAt || Date.now(),
+        version: Number(record?.payload?.version || Math.max(1, clanState.realmCount - depth)),
+        current: nextRoot === activeRoot,
+      });
+      nextRoot = typeof record?.payload?.previousRealmRootURI === "string" ? record.payload.previousRealmRootURI : "";
+      depth += 1;
     }
+
+    return NextResponse.json({ realm, clanState, history });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown realm API error";
     console.error("Realm GET failed", err);

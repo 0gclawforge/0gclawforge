@@ -40,6 +40,18 @@ async function downloadRealm(rootHash: string, tokenId: string, chainId: number)
   try {
     await downloadFromStorage(rootHash, tmpPath, getStorageConfig(chainId));
     return JSON.parse(await readFile(tmpPath, "utf8"));
+  } catch (err) {
+    if (chainId !== 16602) {
+      await rm(tmpPath, { force: true });
+      const fbPath = join(tmpdir(), `0gclawforge-chat-realm-${tokenId}-fb-${Date.now()}.json`);
+      try {
+        await downloadFromStorage(rootHash, fbPath, getStorageConfig(16602));
+        return JSON.parse(await readFile(fbPath, "utf8"));
+      } finally {
+        await rm(fbPath, { force: true });
+      }
+    }
+    throw err;
   } finally {
     await rm(tmpPath, { force: true });
   }

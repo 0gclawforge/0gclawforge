@@ -91,6 +91,19 @@ async function downloadRealmRecord(rootHash: string, tokenId: string, chainId: n
   try {
     await downloadFromStorage(rootHash, tmpPath, getStorageConfig(chainId, false));
     return JSON.parse(await readFile(tmpPath, "utf8"));
+  } catch (err) {
+    // Realm may have been uploaded on a different network's storage indexer — try testnet fallback
+    if (chainId !== 16602) {
+      await rm(tmpPath, { force: true });
+      const fallbackPath = join(tmpdir(), `0gclawforge-realm-${tokenId}-fb-${Date.now()}.json`);
+      try {
+        await downloadFromStorage(rootHash, fallbackPath, getStorageConfig(16602, false));
+        return JSON.parse(await readFile(fallbackPath, "utf8"));
+      } finally {
+        await rm(fallbackPath, { force: true });
+      }
+    }
+    throw err;
   } finally {
     await rm(tmpPath, { force: true });
   }

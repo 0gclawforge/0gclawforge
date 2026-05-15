@@ -876,7 +876,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
             </div>
 
             <Panel title="Game Log" icon={ScrollText}>
-              <div className="fantasy-scrollbar max-h-44 space-y-2 overflow-y-auto pr-2 font-mono text-xs leading-5 text-stone">
+              <div className="fantasy-scrollbar max-h-72 space-y-2 overflow-y-auto pr-2 font-mono text-xs leading-5 text-stone">
                 {gameState.gameLog.map((entry, index) => (
                   <p key={`${entry}-${index}`}>&gt; {entry}</p>
                 ))}

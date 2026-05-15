@@ -13,9 +13,14 @@ export async function GET(req: NextRequest) {
   if (!owner) return NextResponse.json({ error: "owner required" }, { status: 400 });
 
   try {
+    const contractAddress = getAgentInftAddress();
+    if (!contractAddress) {
+      return NextResponse.json({ agents: [] });
+    }
+
     const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_OG_RPC_URL);
     const contract = new ethers.Contract(
-      getAgentInftAddress(),
+      contractAddress,
       INFT_ABI,
       provider
     );

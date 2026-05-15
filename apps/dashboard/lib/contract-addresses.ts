@@ -4,5 +4,5 @@ export function getAgentInftAddress(chainId?: number) {
   const galileoAddress = process.env.NEXT_PUBLIC_AGENT_INFT_ADDRESS || DEFAULT_AGENT_INFT_ADDRESS;
   const mainnetAddress = process.env.NEXT_PUBLIC_AGENT_INFT_MAINNET_ADDRESS;
 
-  return chainId === 16661 ? mainnetAddress || galileoAddress : galileoAddress;
+  return chainId === 16661 ? mainnetAddress || undefined : galileoAddress;
 }

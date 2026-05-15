@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { NextRequest, NextResponse } from "next/server";
 import { downloadFromStorage, type StorageConfig } from "@0gclawforge/sdk";
-import { getOgRpcUrl } from "../../../lib/contract-addresses";
+import { getOgRpcUrl, getOgStorageIndexer } from "../../../lib/contract-addresses";
 
 function readPrivateKey(): string {
   const privateKey = process.env.PRIVATE_KEY?.trim();
@@ -13,10 +13,7 @@ function readPrivateKey(): string {
 
 function getStorageConfig(chainId: number): StorageConfig {
   const rpcUrl = getOgRpcUrl(chainId);
-  const indexerUrl =
-    process.env.VITE_STORAGE_INDEXER ||
-    process.env.NEXT_PUBLIC_STORAGE_INDEXER ||
-    process.env.OG_STORAGE_INDEXER_TURBO;
+  const indexerUrl = getOgStorageIndexer(chainId);
   if (!rpcUrl || !indexerUrl) throw new Error("0G Storage endpoints are not configured");
   return { rpcUrl, indexerUrl, privateKey: readPrivateKey() };
 }

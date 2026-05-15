@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { uploadJSON, ZGComputeClient } from "@0gclawforge/sdk";
-import { getOgRpcUrl } from "../../../lib/contract-addresses";
+import { getOgRpcUrl, getOgStorageIndexer } from "../../../lib/contract-addresses";
 
 interface ClanApiBody {
   action: "prepareMint" | "storeRealm" | "storeVote" | "storeEvolution" | "recordMemoryEntry";
@@ -83,6 +83,9 @@ function getComputeConfig(chainId: number) {
 
 function inferPromptRealm(prompt: string): GeneratedRealm {
   const lower = prompt.toLowerCase();
+  const seed = Date.now();
+  const rng = (i: number) => ((seed * 9301 + i * 49297) % 233280) / 233280;
+  const pick = <T>(arr: T[], i: number): T => arr[Math.floor(rng(i) * arr.length)];
   const title = `${prompt.split(/\s+/).slice(0, 5).join(" ")} Realm`;
 
   const biome =
@@ -161,8 +164,10 @@ function inferPromptRealm(prompt: string): GeneratedRealm {
   const buildMap = (): RealmMap => {
     const width = 16;
     const height = 16;
-    const spawn = { x: 8, y: 14 };
-    const boss = { x: 8, y: 2 };
+    const spawnX = 2 + Math.floor(rng(100) * 12);
+    const spawn = { x: spawnX, y: 14 };
+    const bossX = 2 + Math.floor(rng(101) * 12);
+    const boss = { x: bossX, y: 2 };
     const tiles: RealmMapTile[][] = Array.from({ length: height }, (_, y) =>
       Array.from({ length: width }, (_, x) => ({
         type: x === 0 || y === 0 || x === width - 1 || y === height - 1 ? "wall" : "floor",
@@ -197,13 +202,15 @@ function inferPromptRealm(prompt: string): GeneratedRealm {
       mark(boss.x + 2, 3, { type: "wall" });
     }
 
+    const rx = (i: number) => 2 + Math.floor(rng(200 + i) * 12);
+    const ry = (i: number) => 4 + Math.floor(rng(300 + i) * 9);
     const placements = [
-      { x: 2, y: 5, type: "npc", assetName: assets[1]?.name },
-      { x: 12, y: 11, type: "npc", assetName: assets[2]?.name },
-      { x: 8, y: 6, type: "quest", assetName: assets[3]?.name },
-      { x: 14, y: 6, type: "quest", assetName: assets[4]?.name },
-      { x: 10, y: 8, type: "artifact", assetName: assets[5]?.name },
-      { x: 10, y: 9, type: "artifact", assetName: assets[6]?.name },
+      { x: rx(0), y: ry(0), type: "npc", assetName: assets[1]?.name },
+      { x: rx(1), y: ry(1), type: "npc", assetName: assets[2]?.name },
+      { x: rx(2), y: ry(2), type: "quest", assetName: assets[3]?.name },
+      { x: rx(3), y: ry(3), type: "quest", assetName: assets[4]?.name },
+      { x: rx(4), y: ry(4), type: "artifact", assetName: assets[5]?.name },
+      { x: rx(5), y: ry(5), type: "artifact", assetName: assets[6]?.name },
     ] as const;
 
     for (const placement of placements) {
@@ -212,8 +219,8 @@ function inferPromptRealm(prompt: string): GeneratedRealm {
 
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
-        if (tiles[y][x].type === "floor" && (x * y + prompt.length) % 11 === 0) {
-          tiles[y][x] = { type: "decoration", motif: landmarkIcons[(x + y) % landmarkIcons.length] };
+        if (tiles[y][x].type === "floor" && rng(x * height + y + 500) < 0.08) {
+          tiles[y][x] = { type: "decoration", motif: pick(landmarkIcons, x * height + y) };
         }
       }
     }
@@ -223,7 +230,13 @@ function inferPromptRealm(prompt: string): GeneratedRealm {
 
   return {
     title,
-    lore: `A playable clan realm forged from the request: ${prompt}. Its layout, encounters, and rewards are tuned to reflect that fantasy instead of using a generic board.`,
+    lore: pick([
+      `A playable clan realm forged from the vision: ${prompt}. Every corridor and creature reflects that fantasy.`,
+      `Born from the command "${prompt}", this realm shifts and breathes with each evolution cycle.`,
+      `The clan council decreed: "${prompt}". The realm answered with new paths, guardians, and buried secrets.`,
+      `Shaped by the prompt "${prompt}", this world holds unique encounters that no other realm can replicate.`,
+      `A living realm summoned by "${prompt}". Its walls remember every visitor and its quests adapt to the bold.`,
+    ], 999),
     assets,
     visualTheme,
     map: buildMap(),
@@ -319,10 +332,7 @@ function fallbackRealm(prompt: string) {
 
 function getStorageConfig(chainId: number) {
   const rpcUrl = getOgRpcUrl(chainId);
-  const indexerUrl =
-    process.env.VITE_STORAGE_INDEXER ||
-    process.env.NEXT_PUBLIC_STORAGE_INDEXER ||
-    process.env.OG_STORAGE_INDEXER_TURBO;
+  const indexerUrl = getOgStorageIndexer(chainId);
 
   if (!rpcUrl || !indexerUrl) {
     throw new Error("0G Storage endpoints are not configured");
@@ -341,10 +351,7 @@ async function storeRecord(kind: string, payload: Record<string, unknown>, chain
     payload,
     network: {
       chainId,
-      storageIndexer:
-        process.env.VITE_STORAGE_INDEXER ||
-        process.env.NEXT_PUBLIC_STORAGE_INDEXER ||
-        process.env.OG_STORAGE_INDEXER_TURBO,
+      storageIndexer: getOgStorageIndexer(chainId),
     },
     createdAt: Date.now(),
   };

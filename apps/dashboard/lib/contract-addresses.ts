@@ -25,3 +25,18 @@ export function getOgRpcUrl(chainId?: number) {
     ? process.env.NEXT_PUBLIC_OG_MAINNET_RPC_URL || DEFAULT_OG_MAINNET_RPC_URL
     : process.env.NEXT_PUBLIC_OG_RPC_URL || DEFAULT_OG_GALILEO_RPC_URL;
 }
+
+export const DEFAULT_OG_GALILEO_STORAGE_INDEXER = "https://indexer-storage-testnet-turbo.0g.ai" as const;
+export const DEFAULT_OG_MAINNET_STORAGE_INDEXER = "https://indexer-storage-turbo.0g.ai" as const;
+
+export function getOgStorageIndexer(chainId?: number) {
+  if (chainId === 16661) {
+    return process.env.OG_MAINNET_STORAGE_INDEXER || DEFAULT_OG_MAINNET_STORAGE_INDEXER;
+  }
+  return (
+    process.env.VITE_STORAGE_INDEXER ||
+    process.env.NEXT_PUBLIC_STORAGE_INDEXER ||
+    process.env.OG_STORAGE_INDEXER_TURBO ||
+    DEFAULT_OG_GALILEO_STORAGE_INDEXER
+  );
+}

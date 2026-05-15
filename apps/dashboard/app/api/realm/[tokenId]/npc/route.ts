@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { downloadFromStorage, ZGComputeClient, type StorageConfig } from "@0gclawforge/sdk";
 import { ethers } from "ethers";
 import { agentInftAbi } from "@0gclawforge/sdk";
-import { getAgentInftAddress, getOgRpcUrl } from "../../../../../lib/contract-addresses";
+import { getAgentInftAddress, getOgRpcUrl, getOgStorageIndexer } from "../../../../../lib/contract-addresses";
 
 const AUTONOMOUS_MODEL_NAME = "0GM-1.0-35B-A3B";
 
@@ -17,10 +17,7 @@ function readPrivateKey(): string {
 
 function getStorageConfig(chainId: number): StorageConfig {
   const rpcUrl = getOgRpcUrl(chainId);
-  const indexerUrl =
-    process.env.VITE_STORAGE_INDEXER ||
-    process.env.NEXT_PUBLIC_STORAGE_INDEXER ||
-    process.env.OG_STORAGE_INDEXER_TURBO;
+  const indexerUrl = getOgStorageIndexer(chainId);
   if (!rpcUrl || !indexerUrl) throw new Error("0G Storage endpoints are not configured");
   return { rpcUrl, indexerUrl, privateKey: readPrivateKey() };
 }

@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { agentInftAbi, downloadFromStorage, uploadJSON } from "@0gclawforge/sdk";
 import type { StorageConfig } from "@0gclawforge/sdk";
-import { getAgentInftAddress, getOgRpcUrl } from "../../../../lib/contract-addresses";
+import { getAgentInftAddress, getOgRpcUrl, getOgStorageIndexer } from "../../../../lib/contract-addresses";
 
 interface RealmProgress {
   completed: boolean;
@@ -33,10 +33,7 @@ function readPrivateKey(): string | undefined {
 
 function getStorageConfig(chainId: number, requirePrivateKey = false): StorageConfig {
   const rpcUrl = getOgRpcUrl(chainId);
-  const indexerUrl =
-    process.env.VITE_STORAGE_INDEXER ||
-    process.env.NEXT_PUBLIC_STORAGE_INDEXER ||
-    process.env.OG_STORAGE_INDEXER_TURBO;
+  const indexerUrl = getOgStorageIndexer(chainId);
   const privateKey = readPrivateKey();
 
   if (!rpcUrl || !indexerUrl) {
@@ -174,10 +171,7 @@ export async function POST(req: NextRequest, { params }: { params: { tokenId: st
       },
       network: {
         chainId,
-        storageIndexer:
-          process.env.VITE_STORAGE_INDEXER ||
-          process.env.NEXT_PUBLIC_STORAGE_INDEXER ||
-          process.env.OG_STORAGE_INDEXER_TURBO,
+        storageIndexer: getOgStorageIndexer(chainId),
       },
       createdAt: Date.now(),
     };

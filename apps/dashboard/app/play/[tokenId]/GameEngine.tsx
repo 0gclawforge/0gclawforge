@@ -885,7 +885,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
             </Panel>
           </div>
 
-          <aside className="space-y-5">
+          <aside className="fantasy-scrollbar space-y-5 xl:sticky xl:top-20 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto xl:pr-2">
             <Panel title="Realm Versions" icon={Crown}>
               {realmHistory.length === 0 ? (
                 <p className="text-sm text-stone">No version history is available for this realm yet.</p>

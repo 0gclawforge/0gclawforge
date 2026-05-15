@@ -674,7 +674,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
   const questAssets = realmPayload.assets.filter((asset) => asset.type === "quest");
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] overflow-hidden px-4 py-6 sm:px-6">
+    <main className="min-h-[calc(100vh-4rem)] overflow-x-hidden px-4 py-6 pb-10 sm:px-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-7xl space-y-5">
         <header className="flex flex-col gap-4 rounded-md border border-white/10 bg-white/[0.03] p-5 md:flex-row md:items-center md:justify-between">
           <a href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-stone transition hover:text-parchment">
@@ -726,6 +726,19 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
           </div>
 
           <aside className="space-y-5">
+            <Panel title="How to Play" icon={ScrollText}>
+              <div className="space-y-3 text-sm leading-6 text-stone">
+                <p>Move one tile at a time using <span className="text-parchment">WASD</span> or the <span className="text-parchment">arrow keys</span>.</p>
+                <p>Use <span className="text-parchment">Space</span> to interact with the tile under your character.</p>
+                <p>Talk to NPCs, attempt quests, collect artifacts, and defeat the boss to open the exit.</p>
+                <ul className="space-y-2 text-xs leading-5 text-parchment">
+                  <li>Goal: clear the boss and reach the exit tile.</li>
+                  <li>Artifacts add to your inventory and grant XP.</li>
+                  <li>Failing quests costs HP, so start with nearby NPCs and artifacts first.</li>
+                </ul>
+              </div>
+            </Panel>
+
             <Panel title="Stats" icon={Heart}>
               <StateRow label="HP" value={`${gameState.hp}/${gameState.maxHp}`} />
               <StateRow label="Level" value={String(gameState.level)} />

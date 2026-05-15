@@ -853,6 +853,28 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
               </div>
             </div>
 
+            <div className="flex flex-wrap items-center justify-center gap-3 rounded-md border border-white/10 bg-white/[0.03] p-4">
+              <div className="grid grid-cols-3 gap-1.5">
+                <div />
+                <button onPointerDown={() => movePlayer(0, -1)} className="flex h-12 w-12 items-center justify-center rounded-md border border-gold/40 bg-gold/10 text-lg text-gold active:bg-gold/30">▲</button>
+                <div />
+                <button onPointerDown={() => movePlayer(-1, 0)} className="flex h-12 w-12 items-center justify-center rounded-md border border-gold/40 bg-gold/10 text-lg text-gold active:bg-gold/30">◀</button>
+                <button
+                  onPointerDown={() => {
+                    if (!grid || !gameState) return;
+                    const tile = grid[gameState.playerPos.y]?.[gameState.playerPos.x];
+                    if (tile) triggerInteraction(tile, gameState.playerPos.x, gameState.playerPos.y);
+                  }}
+                  className="flex h-12 w-12 items-center justify-center rounded-md border border-accent-primary/40 bg-accent-primary/10 text-xs font-bold text-parchment active:bg-accent-primary/30"
+                >ACT</button>
+                <button onPointerDown={() => movePlayer(1, 0)} className="flex h-12 w-12 items-center justify-center rounded-md border border-gold/40 bg-gold/10 text-lg text-gold active:bg-gold/30">▶</button>
+                <div />
+                <button onPointerDown={() => movePlayer(0, 1)} className="flex h-12 w-12 items-center justify-center rounded-md border border-gold/40 bg-gold/10 text-lg text-gold active:bg-gold/30">▼</button>
+                <div />
+              </div>
+              <p className="w-full text-center text-xs text-stone">Tap to move. ACT interacts with your tile.</p>
+            </div>
+
             <Panel title="Game Log" icon={ScrollText}>
               <div className="fantasy-scrollbar max-h-44 space-y-2 overflow-y-auto pr-2 font-mono text-xs leading-5 text-stone">
                 {gameState.gameLog.map((entry, index) => (
@@ -910,20 +932,6 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
               <StateRow label="Level" value={String(gameState.level)} />
               <StateRow label="XP" value={`${gameState.xp}/100`} />
               <StateRow label="Gold" value={String(gameState.gold)} />
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <button onClick={() => movePlayer(0, -1)} className="rounded-md border border-white/10 px-3 py-2 text-sm text-parchment">
-                  North
-                </button>
-                <button onClick={() => movePlayer(0, 1)} className="rounded-md border border-white/10 px-3 py-2 text-sm text-parchment">
-                  South
-                </button>
-                <button onClick={() => movePlayer(-1, 0)} className="rounded-md border border-white/10 px-3 py-2 text-sm text-parchment">
-                  West
-                </button>
-                <button onClick={() => movePlayer(1, 0)} className="rounded-md border border-white/10 px-3 py-2 text-sm text-parchment">
-                  East
-                </button>
-              </div>
             </Panel>
 
             <Panel title="Inventory" icon={Package}>

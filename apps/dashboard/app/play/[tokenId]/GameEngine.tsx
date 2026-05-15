@@ -655,10 +655,13 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
     setModal((current) => (current && current.type === "npc" ? { ...current, loading: true } : current));
 
     void (async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 18_000);
       try {
         const response = await fetch(`/api/realm/${tokenId}/npc?chainId=${chainId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({
             npcName: asset.name,
             stateSummary: `HP ${gameState.hp}/${gameState.maxHp}, Level ${gameState.level}, Gold ${gameState.gold}, Boss defeated: ${gameState.bossDefeated ? "yes" : "no"}, Quests: ${gameState.questsCompleted.join(", ") || "none"}, Inventory: ${gameState.inventory.map((item) => item.name).join(", ") || "none"}`,
@@ -681,8 +684,11 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
         setToast(`Spoke with ${asset.name}`);
         setModal((current) => (current && current.type === "npc" ? { ...current, loading: false, result: dialogue } : current));
       } catch (error) {
-        const fallback = `${asset.name}: ${asset.description}`;
+        const fallback = `${asset.name}: ${asset.description} I can still guide you from local realm memory while live 0G Compute catches up.`;
+        addLog(fallback);
         setModal((current) => (current && current.type === "npc" ? { ...current, loading: false, result: fallback } : current));
+      } finally {
+        clearTimeout(timeout);
       }
     })();
   };
@@ -980,9 +986,12 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
     setChatLoading(true);
 
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 18_000);
       const response = await fetch(`/api/realm/${tokenId}/chat?chainId=${chainId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           message: userMsg,
           stateSummary: `HP ${gameState.hp}/${gameState.maxHp}, Level ${gameState.level}, Gold ${gameState.gold}, XP ${gameState.xp}, Boss defeated: ${gameState.bossDefeated ? "yes" : "no"}, Quests done: ${gameState.questsCompleted.join(", ") || "none"}, Inventory: ${gameState.inventory.map((i) => i.name).join(", ") || "none"}`,
@@ -990,11 +999,18 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
           history: chatMessages.slice(-6),
         }),
       });
+      clearTimeout(timeout);
       const payload = (await response.json()) as { reply?: string; error?: string; verified?: boolean };
       const reply = payload.reply || payload.error || "The clan advisor is silent.";
       setChatMessages((prev) => [...prev, { role: "clan", text: reply }]);
     } catch {
-      setChatMessages((prev) => [...prev, { role: "clan", text: "Failed to reach 0G Compute. Try again." }]);
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "clan",
+          text: "Clan Advisor: Mainnet 0G Compute did not answer in time, so I am using local realm memory. Keep moving through quests, collect artifacts, and use autonomy to let NPCs patrol and reshape the map.",
+        },
+      ]);
     } finally {
       setChatLoading(false);
     }
@@ -1005,8 +1021,12 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
     if (!autoMode || !gameState || !realmPayload) return;
 
     pushAutoLog("Autonomous clan is now moving NPCs and reshaping the realm.");
+    const immediate = setTimeout(runAutonomousWorldAction, 900);
     const interval = setInterval(runAutonomousWorldAction, AUTO_WORLD_INTERVAL_MS);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(immediate);
+      clearInterval(interval);
+    };
   }, [autoMode, gameState?.bossDefeated, realmPayload?.title, pushAutoLog, runAutonomousWorldAction]);
 
   // 0GM-style advisory directive. World actions continue even if compute is unavailable.
@@ -1017,15 +1037,19 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
       pushAutoLog(`${AUTONOMOUS_MODEL_NAME} is planning the next clan directive...`);
 
       try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 18_000);
         const response = await fetch(`/api/realm/${tokenId}/chat?chainId=${chainId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({
             message: `Act as ${AUTONOMOUS_MODEL_NAME}, the clan's autonomous world director. Give one concise directive for NPC movement, micro-quest creation, or terrain change. Do not ask for wallet signatures.`,
             stateSummary: `Autonomous mode active. HP ${gameState.hp}/${gameState.maxHp}, Level ${gameState.level}, Gold ${gameState.gold}, Boss defeated: ${gameState.bossDefeated ? "yes" : "no"}, Quests done: ${gameState.questsCompleted.length}/${realmPayload.assets.filter((a) => a.type === "quest").length}, Current auto pulse: ${autoPulseRef.current}`,
             recentLog: gameState.gameLog.slice(-3),
           }),
         });
+        clearTimeout(timeout);
         const payload = (await response.json()) as { reply?: string; error?: string };
         const update = payload.reply || payload.error || "No update available.";
         pushAutoLog(`Directive: ${update}`);

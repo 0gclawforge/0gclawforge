@@ -5,14 +5,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { downloadFromStorage, ZGComputeClient, type StorageConfig } from "@0gclawforge/sdk";
 import { ethers } from "ethers";
 import { agentInftAbi } from "@0gclawforge/sdk";
-import { getAgentInftAddress, getOgRpcUrl, getOgStorageIndexer } from "../../../../../lib/contract-addresses";
+import {
+  getAgentInftAddress,
+  getOgComputeProviderAddress,
+  getOgRpcUrl,
+  getOgStorageIndexer,
+} from "../../../../../lib/contract-addresses";
 
 const AUTONOMOUS_MODEL_NAME = "0GM-1.0-35B-A3B";
 
-function readPrivateKey(): string {
+function readPrivateKey(): string | undefined {
   const privateKey = process.env.PRIVATE_KEY?.trim();
-  if (!privateKey) throw new Error("PRIVATE_KEY is required for live NPC compute.");
-  return privateKey.split(/\s+/)[0];
+  return privateKey?.split(/\s+/)[0];
 }
 
 function getStorageConfig(chainId: number): StorageConfig {
@@ -24,9 +28,10 @@ function getStorageConfig(chainId: number): StorageConfig {
 
 function getComputeConfig(chainId: number) {
   const rpcUrl = getOgRpcUrl(chainId);
-  const providerAddress = process.env.OG_COMPUTE_PROVIDER_ADDR;
-  if (!rpcUrl || !providerAddress) return null;
-  return { rpcUrl, privateKey: readPrivateKey(), providerAddress };
+  const privateKey = readPrivateKey();
+  const providerAddress = getOgComputeProviderAddress(chainId);
+  if (!rpcUrl || !privateKey || !providerAddress) return null;
+  return { rpcUrl, privateKey, providerAddress };
 }
 
 function normalizeClanState(raw: any) {
@@ -57,14 +62,18 @@ async function downloadRealm(rootHash: string, tokenId: string, chainId: number)
   }
 }
 
+function fallbackNpcReply(npc: { name: string; description: string }, realm: any, stateSummary?: string) {
+  const title = realm?.title || "this realm";
+  const quest = realm?.assets?.find((asset: any) => asset.type === "quest")?.name || "the nearest quest marker";
+  const artifact = realm?.assets?.find((asset: any) => asset.type === "artifact")?.name || "a clan artifact";
+  return `${npc.name}: ${npc.description} I am speaking from local realm memory while mainnet 0G Compute is unavailable. In ${title}, recover ${artifact}, follow "${quest}", and avoid the boss until your HP and XP are ready. Current state: ${stateSummary || "unknown"}.`;
+}
+
 export async function POST(req: NextRequest, { params }: { params: { tokenId: string } }) {
   try {
     const body = await req.json();
     const chainId = Number(req.nextUrl.searchParams.get("chainId") || 16602);
     const computeConfig = getComputeConfig(chainId);
-    if (!computeConfig) {
-      return NextResponse.json({ error: "0G Compute is not configured for live NPC dialogue." }, { status: 500 });
-    }
 
     const rpcUrl = getOgRpcUrl(chainId);
     const address = getAgentInftAddress(chainId);
@@ -77,13 +86,32 @@ export async function POST(req: NextRequest, { params }: { params: { tokenId: st
 
     const realmRecord = await downloadRealm(clanState.realmRootURI, params.tokenId, chainId);
     const realm = realmRecord.payload;
-    const npc = realm.assets.find((asset: any) => asset.type === "npc" && asset.name === body.npcName);
-    if (!npc) throw new Error("NPC not found in active realm.");
+    const npc =
+      realm.assets.find((asset: any) => asset.type === "npc" && asset.name === body.npcName) ||
+      {
+        type: "npc",
+        name: typeof body.npcName === "string" && body.npcName.trim() ? body.npcName.trim() : "Realm Keeper",
+        description: "A realm guide reconstructed from the active clan world's local memory.",
+      };
 
-    const client = new ZGComputeClient(computeConfig);
+    if (!computeConfig) {
+      return NextResponse.json({
+        npcName: npc.name,
+        reply: fallbackNpcReply(npc, realm, body.stateSummary),
+        memorySignal: "local-realm-memory",
+        fallback: true,
+        warning: chainId === 16661
+          ? "Mainnet 0G Compute provider is not configured. Set OG_COMPUTE_PROVIDER_ADDR_MAINNET to enable verified inference."
+          : "0G Compute provider is not configured.",
+      });
+    }
 
-    const result = await client.query(
-      `You are ${npc.name} inside the realm "${realm.title}", directed by ${AUTONOMOUS_MODEL_NAME}.
+    try {
+      const client = new ZGComputeClient(computeConfig);
+      await client.setupProvider(computeConfig.providerAddress);
+
+      const result = await client.query(
+        `You are ${npc.name} inside the realm "${realm.title}", directed by ${AUTONOMOUS_MODEL_NAME}.
 
 Realm prompt: ${realm.prompt}
 Realm lore: ${realm.lore}
@@ -99,11 +127,21 @@ Respond as the NPC in 2-4 sentences. Give concrete guidance tied to the current 
       }
     );
 
-    return NextResponse.json({
-      npcName: npc.name,
-      reply: result.text.trim(),
-      memorySignal: result.verified ? "verified-0g-compute" : "unverified-0g-compute",
-    });
+      return NextResponse.json({
+        npcName: npc.name,
+        reply: result.text.trim(),
+        memorySignal: result.verified ? "verified-0g-compute" : "unverified-0g-compute",
+      });
+    } catch (error) {
+      const warning = error instanceof Error ? error.message : "0G Compute request failed.";
+      return NextResponse.json({
+        npcName: npc.name,
+        reply: fallbackNpcReply(npc, realm, body.stateSummary),
+        memorySignal: "local-realm-memory",
+        fallback: true,
+        warning,
+      });
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown NPC compute error";
     return NextResponse.json({ error: message }, { status: 500 });

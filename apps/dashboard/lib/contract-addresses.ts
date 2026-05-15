@@ -40,3 +40,9 @@ export function getOgStorageIndexer(chainId?: number) {
     DEFAULT_OG_GALILEO_STORAGE_INDEXER
   );
 }
+
+export function getOgComputeProviderAddress(chainId?: number) {
+  return chainId === 16661
+    ? process.env.OG_COMPUTE_PROVIDER_ADDR_MAINNET || process.env.NEXT_PUBLIC_OG_COMPUTE_PROVIDER_ADDR_MAINNET || ""
+    : process.env.OG_COMPUTE_PROVIDER_ADDR || process.env.NEXT_PUBLIC_OG_COMPUTE_PROVIDER_ADDR || "";
+}

@@ -5,14 +5,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { downloadFromStorage, ZGComputeClient, type StorageConfig } from "@0gclawforge/sdk";
 import { ethers } from "ethers";
 import { agentInftAbi } from "@0gclawforge/sdk";
-import { getAgentInftAddress, getOgRpcUrl, getOgStorageIndexer } from "../../../../../lib/contract-addresses";
+import {
+  getAgentInftAddress,
+  getOgComputeProviderAddress,
+  getOgRpcUrl,
+  getOgStorageIndexer,
+} from "../../../../../lib/contract-addresses";
 
 const AUTONOMOUS_MODEL_NAME = "0GM-1.0-35B-A3B";
 
-function readPrivateKey(): string {
+function readPrivateKey(): string | undefined {
   const privateKey = process.env.PRIVATE_KEY?.trim();
-  if (!privateKey) throw new Error("PRIVATE_KEY is required for clan chat compute.");
-  return privateKey.split(/\s+/)[0];
+  return privateKey?.split(/\s+/)[0];
 }
 
 function getStorageConfig(chainId: number): StorageConfig {
@@ -24,9 +28,10 @@ function getStorageConfig(chainId: number): StorageConfig {
 
 function getComputeConfig(chainId: number) {
   const rpcUrl = getOgRpcUrl(chainId);
-  const providerAddress = process.env.OG_COMPUTE_PROVIDER_ADDR;
-  if (!rpcUrl || !providerAddress) return null;
-  return { rpcUrl, privateKey: readPrivateKey(), providerAddress };
+  const privateKey = readPrivateKey();
+  const providerAddress = getOgComputeProviderAddress(chainId);
+  if (!rpcUrl || !privateKey || !providerAddress) return null;
+  return { rpcUrl, privateKey, providerAddress };
 }
 
 function normalizeClanState(raw: any) {
@@ -57,6 +62,20 @@ async function downloadRealm(rootHash: string, tokenId: string, chainId: number)
   }
 }
 
+function fallbackReply(message: string, realmContext: string, stateSummary?: string) {
+  const lower = message.toLowerCase();
+  if (/(autonomous|auto|move|npc|world)/.test(lower)) {
+    return `${AUTONOMOUS_MODEL_NAME} local directive: keep watching the realm. NPCs can patrol, micro-quests can appear, and safe floor tiles can shift even when live Compute is not available on this chain. Current state: ${stateSummary || "unknown"}.`;
+  }
+  if (/(quest|where|next|help)/.test(lower)) {
+    return `Clan Advisor: Start with the nearest quest marker, collect artifacts before challenging the boss, and use NPC hints to choose a safer route. ${realmContext}`;
+  }
+  if (/(boss|fight|dragon|attack)/.test(lower)) {
+    return "Clan Advisor: Build XP through quests and artifacts first, then fight the boss when your HP is high. If you lose, regroup at spawn and preserve gold by completing smaller objectives first.";
+  }
+  return `Clan Advisor: I can still guide this realm while mainnet Compute is unavailable. ${realmContext} Watch the log, speak with NPCs, gather artifacts, and let the clan autonomy reshape the map around you.`;
+}
+
 export async function POST(req: NextRequest, { params }: { params: { tokenId: string } }) {
   try {
     const body = await req.json();
@@ -73,9 +92,6 @@ export async function POST(req: NextRequest, { params }: { params: { tokenId: st
 
     const chainId = Number(req.nextUrl.searchParams.get("chainId") || 16602);
     const computeConfig = getComputeConfig(chainId);
-    if (!computeConfig) {
-      return NextResponse.json({ error: "0G Compute is not configured for clan chat." }, { status: 500 });
-    }
 
     const rpcUrl = getOgRpcUrl(chainId);
     const address = getAgentInftAddress(chainId);
@@ -104,10 +120,23 @@ export async function POST(req: NextRequest, { params }: { params: { tokenId: st
       .map((m: any) => `${m.role === "user" ? "Player" : "Clan AI"}: ${m.text}`)
       .join("\n");
 
-    const client = new ZGComputeClient(computeConfig);
+    if (!computeConfig) {
+      return NextResponse.json({
+        reply: fallbackReply(message, realmContext, stateSummary),
+        verified: false,
+        fallback: true,
+        warning: chainId === 16661
+          ? "Mainnet 0G Compute provider is not configured. Set OG_COMPUTE_PROVIDER_ADDR_MAINNET to enable verified inference."
+          : "0G Compute provider is not configured.",
+      });
+    }
 
-    const result = await client.query(
-      `${realmContext}
+    try {
+      const client = new ZGComputeClient(computeConfig);
+      await client.setupProvider(computeConfig.providerAddress);
+
+      const result = await client.query(
+        `${realmContext}
 
 Player state: ${stateSummary || "Unknown"}
 Recent game log: ${Array.isArray(recentLog) ? recentLog.slice(-5).join(" | ") : "None"}
@@ -123,10 +152,19 @@ Respond as the Clan Advisor using ${AUTONOMOUS_MODEL_NAME} sovereign-agent style
       }
     );
 
-    return NextResponse.json({
-      reply: result.text.trim(),
-      verified: result.verified,
-    });
+      return NextResponse.json({
+        reply: result.text.trim(),
+        verified: result.verified,
+      });
+    } catch (error) {
+      const warning = error instanceof Error ? error.message : "0G Compute request failed.";
+      return NextResponse.json({
+        reply: fallbackReply(message, realmContext, stateSummary),
+        verified: false,
+        fallback: true,
+        warning,
+      });
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown clan chat error";
     return NextResponse.json({ error: message }, { status: 500 });

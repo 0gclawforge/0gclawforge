@@ -8,25 +8,57 @@ const INFT_ABI = [
   "function ownerOf(uint256) view returns (address)",
 ];
 
+const MARKETPLACE_ABI = [
+  "function getActiveListings(uint256 offset, uint256 limit) view returns (tuple(uint256 listingId,uint256 tokenId,address seller,uint256 price,uint256 createdAt,bool active)[])",
+  "function tokenToListing(uint256 tokenId) view returns (uint256)",
+  "function listings(uint256 listingId) view returns (uint256 listingId,uint256 tokenId,address seller,uint256 price,uint256 createdAt,bool active)",
+];
+
 export async function GET(req: NextRequest) {
   try {
     const chainId = Number(req.nextUrl.searchParams.get("chainId") || process.env.NEXT_PUBLIC_OG_CHAIN_ID || 16602);
     const contractAddr = getAgentInftAddress(chainId);
-    if (!contractAddr) {
+    const marketplaceAddress = getAgentMarketplaceAddress(chainId);
+    if (!contractAddr || !marketplaceAddress) {
       return NextResponse.json({ listings: [] });
     }
 
     const provider = new ethers.JsonRpcProvider(getOgRpcUrl(chainId));
     const contract = new ethers.Contract(contractAddr, INFT_ABI, provider);
-    const marketplaceAddress = getAgentMarketplaceAddress(chainId)?.toLowerCase();
+    const marketplace = new ethers.Contract(marketplaceAddress, MARKETPLACE_ABI, provider);
+    const activeListings = await marketplace.getActiveListings(0, 100);
 
-    const totalSupply = await contract.totalSupply();
     const listings = [];
 
+    for (const listing of activeListings) {
+      if (!listing.active) continue;
+      const tokenId = Number(listing.tokenId);
+      const data = await contract.getAgentData(tokenId);
+      listings.push({
+        listingId: Number(listing.listingId),
+        tokenId,
+        name: data[2],
+        personality: data[3],
+        modelType: data[4],
+        taskCount: Number(data[6]),
+        memorySize: Number(data[7]),
+        owner: listing.seller,
+        marketplaceAddress: marketplaceAddress.toLowerCase(),
+        price: ethers.formatEther(listing.price),
+        capabilities: [],
+        source: "marketplace",
+      });
+    }
+
+    const totalSupply = await contract.totalSupply();
     for (let i = 1; i <= Number(totalSupply); i++) {
       const data = await contract.getAgentData(i);
       if (data[10]) {
-        // isListedForSale
+        const existingListingId = await marketplace.tokenToListing(i).catch(() => BigInt(0));
+        if (existingListingId && existingListingId !== BigInt(0)) {
+          const marketplaceListing = await marketplace.listings(existingListingId).catch(() => null);
+          if (marketplaceListing?.active) continue;
+        }
         const owner = await contract.ownerOf(i);
         listings.push({
           tokenId: i,
@@ -36,9 +68,10 @@ export async function GET(req: NextRequest) {
           taskCount: Number(data[6]),
           memorySize: Number(data[7]),
           owner,
-          marketplaceAddress,
+          marketplaceAddress: marketplaceAddress.toLowerCase(),
           price: ethers.formatEther(data[11]),
           capabilities: [],
+          source: "inft-legacy",
         });
       }
     }

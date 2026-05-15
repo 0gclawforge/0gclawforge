@@ -21,7 +21,7 @@ import {
 import { parseEther, parseEventLogs, type Address, type Hex } from "viem";
 import { useAccount, useChainId, usePublicClient, useWriteContract } from "wagmi";
 import { agentInftAbi } from "../lib/agent-inft-abi";
-import { getAgentInftAddress } from "../lib/contract-addresses";
+import { getAgentInftAddress, getAgentMarketplaceAddress } from "../lib/contract-addresses";
 
 type Tab = "mint" | "realm" | "governance" | "evolution" | "trade";
 type StatusKind = "idle" | "working" | "success" | "error";
@@ -66,6 +66,47 @@ const tabs: Array<{ id: Tab; label: string }> = [
   { id: "trade", label: "Trade" },
 ];
 
+const marketplaceAbi = [
+  {
+    type: "function",
+    name: "createListing",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "tokenId", type: "uint256" },
+      { name: "price", type: "uint256" },
+    ],
+    outputs: [{ name: "listingId", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "cancelListing",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "listingId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "tokenToListing",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "listingId", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "listings",
+    stateMutability: "view",
+    inputs: [{ name: "listingId", type: "uint256" }],
+    outputs: [
+      { name: "listingId", type: "uint256" },
+      { name: "tokenId", type: "uint256" },
+      { name: "seller", type: "address" },
+      { name: "price", type: "uint256" },
+      { name: "createdAt", type: "uint256" },
+      { name: "active", type: "bool" },
+    ],
+  },
+] as const;
+
 const galileoExplorerUrl = process.env.NEXT_PUBLIC_OG_EXPLORER || "https://chainscan-galileo.0g.ai";
 const mainnetExplorerUrl = process.env.NEXT_PUBLIC_OG_MAINNET_EXPLORER || "https://chainscan.0g.ai";
 
@@ -75,6 +116,7 @@ export default function HomePage() {
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
   const contractAddress = getAgentInftAddress(chainId) as Address;
+  const marketplaceAddress = getAgentMarketplaceAddress(chainId) as Address;
   const explorerUrl = chainId === 16661 ? mainnetExplorerUrl : galileoExplorerUrl;
 
   const [activeTab, setActiveTab] = useState<Tab>("mint");
@@ -575,29 +617,86 @@ export default function HomePage() {
     });
 
   const listClan = () =>
-    run("Waiting for wallet signature to list clan iNFT...", async () => {
+    run("Preparing marketplace listing...", async () => {
       assertReady();
       if (!tokenId) throw new Error("Enter the clan token ID first.");
-      const hash = await writeContractAsync({
+      if (!marketplaceAddress) throw new Error("Marketplace contract address is not configured for this network.");
+
+      const existingListingId = await publicClient
+        ?.readContract({
+          address: marketplaceAddress,
+          abi: marketplaceAbi,
+          functionName: "tokenToListing",
+          args: [BigInt(tokenId)],
+        })
+        .catch(() => BigInt(0));
+
+      if (existingListingId && existingListingId !== BigInt(0)) {
+        const existing = await publicClient
+          ?.readContract({
+            address: marketplaceAddress,
+            abi: marketplaceAbi,
+            functionName: "listings",
+            args: [existingListingId],
+          })
+          .catch(() => null);
+        const active = Boolean((existing as any)?.active ?? (existing as any)?.[5]);
+        if (active) throw new Error("This clan already has an active marketplace listing.");
+      }
+
+      setStatus({ kind: "working", message: "Approve marketplace transfer for this clan..." });
+      const approvalHash = await writeContractAsync({
         address: contractAddress!,
         abi: agentInftAbi,
-        functionName: "listForSale",
+        functionName: "approve",
+        args: [marketplaceAddress, BigInt(tokenId)],
+      });
+      if (publicClient) {
+        await publicClient.waitForTransactionReceipt({ hash: approvalHash, timeout: 60_000, pollingInterval: 3_000 });
+      }
+
+      setStatus({ kind: "working", message: "Create marketplace listing..." });
+      const hash = await writeContractAsync({
+        address: marketplaceAddress,
+        abi: marketplaceAbi,
+        functionName: "createListing",
         args: [BigInt(tokenId), parseEther(salePrice)],
       });
-      return { kind: "success", message: "Clan listed for sale on the iNFT contract.", txHash: hash };
+      return { kind: "success", message: "Clan listed on the marketplace contract.", txHash: hash };
     });
 
   const delistClan = () =>
-    run("Waiting for wallet signature to delist clan iNFT...", async () => {
+    run("Removing marketplace listing...", async () => {
       assertReady();
       if (!tokenId) throw new Error("Enter the clan token ID first.");
+      if (!marketplaceAddress) throw new Error("Marketplace contract address is not configured for this network.");
+
+      const listingId = await publicClient
+        ?.readContract({
+          address: marketplaceAddress,
+          abi: marketplaceAbi,
+          functionName: "tokenToListing",
+          args: [BigInt(tokenId)],
+        })
+        .catch(() => BigInt(0));
+
+      if (listingId && listingId !== BigInt(0)) {
+        const hash = await writeContractAsync({
+          address: marketplaceAddress,
+          abi: marketplaceAbi,
+          functionName: "cancelListing",
+          args: [listingId],
+        });
+        return { kind: "success", message: "Marketplace listing cancelled.", txHash: hash };
+      }
+
       const hash = await writeContractAsync({
         address: contractAddress!,
         abi: agentInftAbi,
         functionName: "delist",
         args: [BigInt(tokenId)],
       });
-      return { kind: "success", message: "Clan sale listing removed.", txHash: hash };
+      return { kind: "success", message: "Legacy iNFT sale flag removed.", txHash: hash };
     });
 
   return (

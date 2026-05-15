@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { useAccount, useWriteContract, usePublicClient, useChainId } from "wagmi";
+import { useAccount, useWriteContract, useChainId } from "wagmi";
 import { parseEther, type Address } from "viem";
 import { getAgentMarketplaceAddress } from "../../lib/contract-addresses";
 
 interface ClanListing {
+  listingId?: number;
   tokenId: number;
   name: string;
   personality: string;
@@ -16,6 +17,7 @@ interface ClanListing {
   owner: string;
   price: string;
   capabilities: string[];
+  source?: "marketplace" | "inft-legacy";
 }
 
 function generateGradient(id: number): string {
@@ -54,7 +56,6 @@ const marketplaceAbi = [
 export default function MarketplacePage() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
-  const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
   const [listings, setListings] = useState<ClanListing[]>([]);
   const [filter, setFilter] = useState("");
@@ -92,15 +93,9 @@ export default function MarketplacePage() {
     setStatus(`Purchasing clan #${listing.tokenId}...`);
 
     try {
-      const listingId = await publicClient!.readContract({
-        address: marketplaceAddress,
-        abi: marketplaceAbi,
-        functionName: "tokenToListing",
-        args: [BigInt(listing.tokenId)],
-      });
-
-      if (!listingId || listingId === BigInt(0)) {
-        setStatus("This clan is not listed on the marketplace contract. The seller must list through the marketplace.");
+      const listingId = listing.listingId ? BigInt(listing.listingId) : BigInt(0);
+      if (!listingId || listing.source !== "marketplace") {
+        setStatus("This clan was listed with the old iNFT sale flag. The seller needs to press List for sale again to create a marketplace listing.");
         setBuying(null);
         return;
       }
@@ -184,6 +179,11 @@ export default function MarketplacePage() {
                   <span>{clan.taskCount} evolutions</span>
                   <span>{clan.modelType}</span>
                 </div>
+                {clan.source !== "marketplace" && (
+                  <div className="rounded border border-ember/30 bg-ember/10 px-3 py-2 text-xs text-ember">
+                    Legacy sale flag. Seller must list again to enable buying.
+                  </div>
+                )}
                 <div className="flex items-center justify-between border-t border-white/10 pt-3">
                   <div>
                     <span className="text-xs text-stone">Owned by </span>
@@ -195,10 +195,16 @@ export default function MarketplacePage() {
                 </div>
                 <button
                   onClick={() => buyClan(clan)}
-                  disabled={buying === clan.tokenId || !isConnected}
+                  disabled={buying === clan.tokenId || !isConnected || clan.source !== "marketplace"}
                   className="w-full rounded-md bg-gold py-2.5 font-bold text-obsidian transition hover:opacity-90 disabled:opacity-60"
                 >
-                  {buying === clan.tokenId ? "Purchasing..." : !isConnected ? "Connect Wallet" : "Buy Clan"}
+                  {buying === clan.tokenId
+                    ? "Purchasing..."
+                    : !isConnected
+                      ? "Connect Wallet"
+                      : clan.source !== "marketplace"
+                        ? "Relist Required"
+                        : "Buy Clan"}
                 </button>
                 <a
                   href={`/play/${clan.tokenId}?spectator=1`}

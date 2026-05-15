@@ -67,6 +67,16 @@ export const agentInftAbi = [
   },
   {
     type: "function",
+    name: "approve",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "tokenId", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
     name: "delist",
     stateMutability: "nonpayable",
     inputs: [{ name: "tokenId", type: "uint256" }],

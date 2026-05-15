@@ -9,6 +9,7 @@ import {
   Crown,
   DoorOpen,
   Heart,
+  MessageSquare,
   Loader2,
   Package,
   Save,
@@ -74,6 +75,26 @@ const themes: Record<BiomeTheme["id"], BiomeTheme> = {
     npcIcon: "🧙",
     bossName: "Ember Vault Drake",
   },
+  neon: {
+    id: "neon",
+    name: "Neon District",
+    floorClass: "bg-cyan-500/5",
+    wallClass: "bg-slate-950/70 border-cyan-400/30",
+    wallIcon: "▥",
+    decorationIcons: ["⬢", "✦", "◉", "▣"],
+    npcIcon: "◈",
+    bossName: "Chrome Tyrant",
+  },
+  citadel: {
+    id: "citadel",
+    name: "Citadel",
+    floorClass: "bg-amber-50/[0.04]",
+    wallClass: "bg-stone-900/60 border-amber-100/10",
+    wallIcon: "▦",
+    decorationIcons: ["⚜", "✦", "▣", "◈"],
+    npcIcon: "♜",
+    bossName: "Throne Warden",
+  },
   default: {
     id: "default",
     name: "Wild Realm",
@@ -109,9 +130,13 @@ function rollDie(sides: number) {
 }
 
 function selectTheme(realm: RealmPayload): BiomeTheme {
+  const explicitThemeId = realm.visualTheme?.id;
+  if (explicitThemeId && explicitThemeId in themes) return themes[explicitThemeId as keyof typeof themes];
   const biome = realm.assets.find((asset) => asset.type === "biome");
   const text = `${realm.title} ${realm.lore} ${biome?.name ?? ""} ${biome?.description ?? ""}`.toLowerCase();
 
+  if (/(neon|cyber|punk|street|city|district|arcade)/.test(text)) return themes.neon;
+  if (/(castle|citadel|fortress|cathedral|throne)/.test(text)) return themes.citadel;
   if (/(desert|dune|sand|oasis|cactus|sun)/.test(text)) return themes.desert;
   if (/(cave|dungeon|stone|crypt|lava|vault|ember|under)/.test(text)) return themes.cave;
   if (/(forest|grove|moss|tree|root|moonlit|wood|wild)/.test(text)) return themes.forest;
@@ -121,12 +146,37 @@ function selectTheme(realm: RealmPayload): BiomeTheme {
 function generateMap(realm: RealmPayload) {
   const theme = selectTheme(realm);
   const random = mulberry32(hashSeed(`${realm.tokenId}:${realm.title}:${realm.lore}`));
+  const assetByName = new Map(realm.assets.map((asset) => [asset.name, asset]));
   const layout = realm.layout ?? {
     style: "grove" as const,
     wallDensity: 0.08,
     landmarkIcons: theme.decorationIcons,
     bossIcon: "🐉",
   };
+  if (realm.map?.tiles?.length) {
+    const explicitGrid = realm.map.tiles.map((row) =>
+      row.map((cell) => ({
+        type: cell.type,
+        icon:
+          cell.type === "npc" ? theme.npcIcon
+            : cell.type === "quest" ? "⭐"
+            : cell.type === "artifact" ? "💎"
+            : cell.type === "boss" ? layout.bossIcon || "🐉"
+            : cell.type === "decoration" ? cell.motif || theme.decorationIcons[0] || "✦"
+            : cell.type === "exit" ? "🚪"
+            : cell.type === "wall" ? theme.wallIcon
+            : "",
+        passable: cell.type !== "wall",
+        asset: cell.assetName ? assetByName.get(cell.assetName) : undefined,
+      }))
+    );
+
+    return {
+      grid: explicitGrid,
+      theme,
+      spawn: realm.map.spawn ?? PLAYER_SPAWN,
+    };
+  }
   const grid: Tile[][] = Array.from({ length: MAP_SIZE }, () =>
     Array.from({ length: MAP_SIZE }, () => ({ ...EMPTY_TILE }))
   );
@@ -229,7 +279,7 @@ function generateMap(realm: RealmPayload) {
     }
   }
 
-  return { grid, theme };
+  return { grid, theme, spawn: PLAYER_SPAWN };
 }
 
 function bossMaxHp(realm: RealmPayload | null) {
@@ -255,8 +305,9 @@ function applyRewards(state: GameState, xp: number, gold: number, logs: string[]
 }
 
 function initialGameState(realm: RealmPayload): GameState {
+  const spawn = realm.map?.spawn ?? PLAYER_SPAWN;
   return {
-    playerPos: PLAYER_SPAWN,
+    playerPos: spawn,
     hp: 100,
     maxHp: 100,
     gold: 0,
@@ -268,6 +319,10 @@ function initialGameState(realm: RealmPayload): GameState {
     bossDefeated: false,
     gameLog: appendLog([], [`You entered ${realm.title}.`, "WASD or arrow keys move one tile at a time."]),
   };
+}
+
+function realmSpawn(realm: RealmPayload | null) {
+  return realm?.map?.spawn ?? PLAYER_SPAWN;
 }
 
 function normalizeClanState(raw: unknown): ClanState | null {
@@ -408,7 +463,10 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
     const generated = generateMap(realmPayload);
     setGrid(generated.grid);
     setTheme(generated.theme);
-    setGameState(initialGameState(realmPayload));
+    setGameState({
+      ...initialGameState(realmPayload),
+      playerPos: generated.spawn,
+    });
     setBossHp(bossMaxHp(realmPayload));
     setCompleted(false);
     setSaveStatus("");
@@ -508,23 +566,41 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
   }, [gameState, grid, movePlayer, triggerInteraction]);
 
   const talkToNpc = (asset: RealmAsset) => {
-    const firstConversation = !gameState?.npcsSpoken.includes(asset.name);
-    const dialogue = firstConversation
-      ? `${asset.name}: ${asset.description} You feel a pulse of remembered history.`
-      : `${asset.name}: We have already spoken, but the memory remains.`;
+    if (!gameState) return;
+    const firstConversation = !gameState.npcsSpoken.includes(asset.name);
+    setModal((current) => (current && current.type === "npc" ? { ...current, loading: true } : current));
 
-    setGameState((state) => {
-      if (!state) return state;
-      const nextState = {
-        ...state,
-        npcsSpoken: firstConversation ? [...state.npcsSpoken, asset.name] : state.npcsSpoken,
-      };
-      return firstConversation
-        ? applyRewards(nextState, 10, 0, [dialogue])
-        : { ...nextState, gameLog: appendLog(nextState.gameLog, dialogue) };
-    });
-    setToast(`Spoke with ${asset.name}`);
-    setModal((current) => (current && current.type === "npc" ? { ...current, result: dialogue } : current));
+    void (async () => {
+      try {
+        const response = await fetch(`/api/realm/${tokenId}/npc?chainId=${chainId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            npcName: asset.name,
+            stateSummary: `HP ${gameState.hp}/${gameState.maxHp}, Level ${gameState.level}, Gold ${gameState.gold}, Boss defeated: ${gameState.bossDefeated ? "yes" : "no"}, Quests: ${gameState.questsCompleted.join(", ") || "none"}, Inventory: ${gameState.inventory.map((item) => item.name).join(", ") || "none"}`,
+            recentLog: gameState.gameLog.slice(-5),
+          }),
+        });
+        const payload = (await response.json()) as { reply?: string; error?: string };
+        const dialogue = payload.reply || payload.error || `${asset.name}: ${asset.description}`;
+
+        setGameState((state) => {
+          if (!state) return state;
+          const nextState = {
+            ...state,
+            npcsSpoken: firstConversation ? [...state.npcsSpoken, asset.name] : state.npcsSpoken,
+          };
+          return firstConversation
+            ? applyRewards(nextState, 10, 0, [dialogue])
+            : { ...nextState, gameLog: appendLog(nextState.gameLog, dialogue) };
+        });
+        setToast(`Spoke with ${asset.name}`);
+        setModal((current) => (current && current.type === "npc" ? { ...current, loading: false, result: dialogue } : current));
+      } catch (error) {
+        const fallback = `${asset.name}: ${asset.description}`;
+        setModal((current) => (current && current.type === "npc" ? { ...current, loading: false, result: fallback } : current));
+      }
+    })();
   };
 
   const attemptQuest = (asset: RealmAsset) => {
@@ -608,7 +684,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
               ...state,
               hp: state.maxHp,
               gold: Math.floor(state.gold / 2),
-              playerPos: PLAYER_SPAWN,
+              playerPos: realmSpawn(realmPayload),
               gameLog: appendLog(state.gameLog, [...combatLog, `${theme.bossName} defeats you. You respawn at the realm gate with half your gold.`]),
             }
           : state
@@ -954,10 +1030,38 @@ function TileCell({ tile, theme, isPlayer }: { tile: Tile; theme: BiomeTheme; is
                   ? "border-accent-secondary/70 bg-accent-secondary/20 text-accent-secondary"
                   : `${theme.floorClass} border-white/5 text-stone`;
 
+  const palette = (() => {
+    if (theme.id === "neon") return { floor: "#11263c", wall: "#09101a", accent: "#ff4fd8", glow: "#25f3ff", line: "#6cf5ff" };
+    if (theme.id === "citadel") return { floor: "#2a2430", wall: "#1d1823", accent: "#d4b06a", glow: "#f7ead2", line: "#8c6b3f" };
+    if (theme.id === "desert") return { floor: "#3e2a14", wall: "#2a1b0f", accent: "#f0b34d", glow: "#ffd27a", line: "#8e6231" };
+    if (theme.id === "cave") return { floor: "#1d1c25", wall: "#121119", accent: "#ff7a3d", glow: "#ffd166", line: "#714126" };
+    return { floor: "#173322", wall: "#0f2016", accent: "#9be36a", glow: "#b7ffd1", line: "#335f46" };
+  })();
+
+  const backgroundImage = (() => {
+    const shape =
+      type === "wall"
+        ? `<rect x='0' y='0' width='40' height='40' rx='4' fill='${palette.wall}'/><path d='M0 12h40M0 24h40M0 36h40' stroke='${palette.line}' stroke-width='1' opacity='0.5'/>`
+        : type === "boss"
+          ? `<rect x='0' y='0' width='40' height='40' rx='4' fill='${palette.floor}'/><circle cx='20' cy='20' r='11' fill='${palette.accent}' opacity='0.22'/><path d='M9 30 L20 8 L31 30 Z' fill='${palette.accent}' opacity='0.7'/>`
+          : type === "quest"
+            ? `<rect x='0' y='0' width='40' height='40' rx='4' fill='${palette.floor}'/><rect x='8' y='8' width='24' height='24' rx='6' fill='${palette.accent}' opacity='0.16'/><path d='M20 9 L23 17 L31 17 L24 22 L27 30 L20 25 L13 30 L16 22 L9 17 L17 17 Z' fill='${palette.glow}'/>`
+            : type === "artifact"
+              ? `<rect x='0' y='0' width='40' height='40' rx='4' fill='${palette.floor}'/><path d='M20 7 L30 20 L20 33 L10 20 Z' fill='${palette.glow}' opacity='0.82'/><path d='M20 11 L26 20 L20 29 L14 20 Z' fill='${palette.accent}' opacity='0.55'/>`
+              : type === "npc"
+                ? `<rect x='0' y='0' width='40' height='40' rx='4' fill='${palette.floor}'/><circle cx='20' cy='15' r='6' fill='${palette.glow}' opacity='0.72'/><rect x='13' y='22' width='14' height='9' rx='4' fill='${palette.accent}' opacity='0.55'/>`
+                : type === "exit"
+                  ? `<rect x='0' y='0' width='40' height='40' rx='4' fill='${palette.floor}'/><rect x='11' y='8' width='18' height='24' rx='3' fill='${palette.accent}' opacity='0.28'/><rect x='15' y='11' width='10' height='18' rx='2' fill='${palette.glow}' opacity='0.3'/>`
+                  : `<rect x='0' y='0' width='40' height='40' rx='4' fill='${palette.floor}'/><path d='M0 31 Q20 25 40 31' stroke='${palette.line}' stroke-width='1' opacity='0.4'/><circle cx='32' cy='8' r='2' fill='${palette.glow}' opacity='0.5'/>`;
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'>${shape}</svg>`;
+    return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
+  })();
+
   return (
     <div
       className={`flex h-10 w-10 select-none items-center justify-center rounded-sm border text-lg transition hover:shadow-glow ${className}`}
       title={tile.asset?.name ?? tile.type}
+      style={{ backgroundImage, backgroundSize: "cover", backgroundPosition: "center" }}
     >
       {icon}
     </div>
@@ -987,6 +1091,12 @@ function EncounterDialog(props: {
           <h2 className="text-2xl font-black text-parchment">{title}</h2>
         </div>
         <p className="text-sm leading-6 text-stone">{description}</p>
+        {modal.type === "npc" && modal.loading && (
+          <div className="mt-4 flex items-center gap-2 rounded-md border border-white/10 bg-black/25 p-3 text-sm text-parchment">
+            <Loader2 className="h-4 w-4 animate-spin text-gold" />
+            Querying live 0G Compute memory...
+          </div>
+        )}
         {result && <p className="mt-4 rounded-md border border-white/10 bg-black/25 p-3 text-sm text-parchment">{result}</p>}
 
         {modal.type === "boss" && (
@@ -1004,6 +1114,7 @@ function EncounterDialog(props: {
         <div className="mt-6 flex flex-wrap gap-3">
           {modal.type === "npc" && (
             <button onClick={() => props.onTalk(modal.asset)} className="rounded-lg bg-gold px-5 py-2.5 text-sm font-semibold text-obsidian">
+              <MessageSquare className="mr-2 inline h-4 w-4" />
               Talk
             </button>
           )}

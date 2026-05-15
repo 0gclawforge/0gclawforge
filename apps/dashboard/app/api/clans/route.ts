@@ -26,6 +26,43 @@ type RealmLayout = {
   bossIcon?: string;
 };
 
+type RealmVisualTheme = {
+  id: "forest" | "desert" | "cave" | "neon" | "citadel" | "default";
+  palette: {
+    bg: string;
+    floor: string;
+    wall: string;
+    accent: string;
+    glow: string;
+  };
+  motifs: string[];
+  tileStyle: "organic" | "ruin" | "cyber" | "royal";
+};
+
+type RealmMapTile = {
+  type: "wall" | "floor" | "npc" | "quest" | "artifact" | "boss" | "decoration" | "exit";
+  assetName?: string;
+  motif?: string;
+};
+
+type RealmMap = {
+  width: number;
+  height: number;
+  spawn: { x: number; y: number };
+  boss: { x: number; y: number };
+  exit?: { x: number; y: number };
+  tiles: RealmMapTile[][];
+};
+
+type GeneratedRealm = {
+  title: string;
+  lore: string;
+  assets: Array<{ type: string; name: string; description: string }>;
+  layout: RealmLayout;
+  visualTheme: RealmVisualTheme;
+  map: RealmMap;
+};
+
 function readPrivateKey(): string {
   const privateKey = process.env.PRIVATE_KEY?.trim();
   if (!privateKey) {
@@ -41,17 +78,13 @@ function getComputeConfig() {
   return { rpcUrl, privateKey: readPrivateKey(), providerAddress };
 }
 
-function inferPromptRealm(prompt: string): {
-  title: string;
-  lore: string;
-  assets: Array<{ type: string; name: string; description: string }>;
-  layout: RealmLayout;
-} {
+function inferPromptRealm(prompt: string): GeneratedRealm {
   const lower = prompt.toLowerCase();
   const title = `${prompt.split(/\s+/).slice(0, 5).join(" ")} Realm`;
 
   const biome =
-    /(desert|dune|sand|oasis|sun)/.test(lower) ? "desert"
+    /(neon|cyber|punk|street|city|district|arcade|rain-soaked)/.test(lower) ? "neon"
+      : /(desert|dune|sand|oasis|sun)/.test(lower) ? "desert"
       : /(cave|vault|ember|under|crypt|lava|ruin)/.test(lower) ? "cave"
       : /(castle|fortress|citadel|hall|cathedral)/.test(lower) ? "citadel"
       : "forest";
@@ -63,20 +96,58 @@ function inferPromptRealm(prompt: string): {
       : "grove";
 
   const landmarkIcons =
-    biome === "desert" ? ["🌵", "☀", "🏺", "✧"]
+    biome === "neon" ? ["⬢", "✦", "◉", "▣"]
+      : biome === "desert" ? ["🌵", "☀", "🏺", "✧"]
       : biome === "cave" ? ["🪨", "🕯", "💠", "✦"]
       : biome === "citadel" ? ["🏰", "⚜", "🛡", "✦"]
       : ["🌿", "🍄", "🌙", "✦"];
 
   const bossIcon =
-    /(dragon|wyrm|drake)/.test(lower) ? "🐉"
+    /(mech|android|synthetic|cyber)/.test(lower) ? "🤖"
+      : /(dragon|wyrm|drake)/.test(lower) ? "🐉"
       : /(lich|necromancer|spirit|ghost)/.test(lower) ? "💀"
       : /(golem|guardian|construct)/.test(lower) ? "🗿"
       : "🐉";
 
+  const visualTheme: RealmVisualTheme =
+    biome === "neon"
+      ? {
+          id: "neon",
+          palette: { bg: "#08111f", floor: "#10243c", wall: "#09101a", accent: "#ff4fd8", glow: "#25f3ff" },
+          motifs: ["neon-kanji", "wet-asphalt", "holo-signs"],
+          tileStyle: "cyber",
+        }
+      : biome === "desert"
+        ? {
+            id: "desert",
+            palette: { bg: "#24160b", floor: "#3e2a14", wall: "#2a1b0f", accent: "#f0b34d", glow: "#ffd27a" },
+            motifs: ["dune-ridges", "sun-banners", "carved-stone"],
+            tileStyle: "ruin",
+          }
+        : biome === "cave"
+          ? {
+              id: "cave",
+              palette: { bg: "#0d0d12", floor: "#1d1c25", wall: "#121119", accent: "#ff7a3d", glow: "#ffd166" },
+              motifs: ["ember-veins", "vault-runes", "obsidian-cracks"],
+              tileStyle: "ruin",
+            }
+          : biome === "citadel"
+            ? {
+                id: "citadel",
+                palette: { bg: "#131018", floor: "#292232", wall: "#1c1624", accent: "#d4b06a", glow: "#f7ead2" },
+                motifs: ["royal-banners", "sigil-stone", "vault-arches"],
+                tileStyle: "royal",
+              }
+            : {
+                id: "forest",
+                palette: { bg: "#0b140f", floor: "#173322", wall: "#0f2016", accent: "#9be36a", glow: "#b7ffd1" },
+                motifs: ["moss-veins", "moon-petals", "root-circles"],
+                tileStyle: "organic",
+              };
+
   const assets = [
     { type: "biome", name: `${biome[0].toUpperCase()}${biome.slice(1)} Frontier`, description: `A permanent world space shaped by: ${prompt}` },
-    { type: "npc", name: biome === "citadel" ? "Banner Marshal" : biome === "desert" ? "Dune Oracle" : biome === "cave" ? "Vault Hermit" : "Memory Warden", description: `A guide bound to the realm's core theme: ${prompt}.` },
+    { type: "npc", name: biome === "neon" ? "Neon Fixer" : biome === "citadel" ? "Banner Marshal" : biome === "desert" ? "Dune Oracle" : biome === "cave" ? "Vault Hermit" : "Memory Warden", description: `A guide bound to the realm's core theme: ${prompt}.` },
     { type: "npc", name: /(merchant|market|trade)/.test(lower) ? "Caravan Broker" : "Rune Keeper", description: "Shares clues about the safest route and what the clan should recover." },
     { type: "quest", name: /(dragon|boss|wyrm)/.test(lower) ? "Break the Tyrant's Hold" : "First Echo", description: `A quest objective pulled from the realm prompt: ${prompt}.` },
     { type: "quest", name: style === "labyrinth" ? "Trace the Hidden Path" : style === "corridor" ? "Hold the Narrow Way" : "Awaken the Inner Gate", description: "A second objective that changes how the player navigates the map." },
@@ -84,10 +155,75 @@ function inferPromptRealm(prompt: string): {
     { type: "artifact", name: /(moon|night|star)/.test(lower) ? "Lunar Thread" : "Memory Prism", description: "A secondary reward tied to the prompt's strongest motif." },
   ];
 
+  const buildMap = (): RealmMap => {
+    const width = 16;
+    const height = 16;
+    const spawn = { x: 8, y: 14 };
+    const boss = { x: 8, y: 2 };
+    const tiles: RealmMapTile[][] = Array.from({ length: height }, (_, y) =>
+      Array.from({ length: width }, (_, x) => ({
+        type: x === 0 || y === 0 || x === width - 1 || y === height - 1 ? "wall" : "floor",
+      }))
+    );
+
+    const mark = (x: number, y: number, tile: RealmMapTile) => {
+      if (x > 0 && y > 0 && x < width - 1 && y < height - 1) tiles[y][x] = tile;
+    };
+
+    mark(boss.x, boss.y, { type: "boss", motif: bossIcon });
+
+    if (style === "labyrinth") {
+      for (let x = 3; x < width - 3; x += 3) {
+        const gapY = 2 + ((x * 5) % (height - 4));
+        for (let y = 1; y < height - 1; y++) {
+          if (y !== gapY && !(x === spawn.x && y === spawn.y) && !(x === boss.x && y === boss.y)) {
+            tiles[y][x] = { type: "wall" };
+          }
+        }
+      }
+    } else if (style === "corridor") {
+      for (let y = 3; y < height - 3; y += 3) {
+        const gapX = 2 + ((y * 7) % (width - 4));
+        for (let x = 1; x < width - 1; x++) {
+          if (Math.abs(x - gapX) > 1) tiles[y][x] = { type: "wall" };
+        }
+      }
+    } else if (style === "sanctum") {
+      for (let x = boss.x - 2; x <= boss.x + 2; x++) mark(x, 4, { type: "wall" });
+      mark(boss.x - 2, 3, { type: "wall" });
+      mark(boss.x + 2, 3, { type: "wall" });
+    }
+
+    const placements = [
+      { x: 2, y: 5, type: "npc", assetName: assets[1]?.name },
+      { x: 12, y: 11, type: "npc", assetName: assets[2]?.name },
+      { x: 8, y: 6, type: "quest", assetName: assets[3]?.name },
+      { x: 14, y: 6, type: "quest", assetName: assets[4]?.name },
+      { x: 10, y: 8, type: "artifact", assetName: assets[5]?.name },
+      { x: 10, y: 9, type: "artifact", assetName: assets[6]?.name },
+    ] as const;
+
+    for (const placement of placements) {
+      mark(placement.x, placement.y, { type: placement.type, assetName: placement.assetName });
+    }
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        if (tiles[y][x].type === "floor" && (x * y + prompt.length) % 11 === 0) {
+          tiles[y][x] = { type: "decoration", motif: landmarkIcons[(x + y) % landmarkIcons.length] };
+        }
+      }
+    }
+
+    return { width, height, spawn, boss, tiles };
+  };
+
   return {
     title,
     lore: `A playable clan realm forged from the request: ${prompt}. Its layout, encounters, and rewards are tuned to reflect that fantasy instead of using a generic board.`,
     assets,
+    visualTheme,
+    map: buildMap(),
     layout: {
       style,
       wallDensity: style === "labyrinth" ? 0.18 : style === "corridor" ? 0.14 : style === "sanctum" ? 0.12 : 0.08,
@@ -97,7 +233,7 @@ function inferPromptRealm(prompt: string): {
   };
 }
 
-async function generateRealmWithInference(prompt: string): Promise<{ title: string; lore: string; assets: Array<{ type: string; name: string; description: string }>; layout: RealmLayout }> {
+async function generateRealmWithInference(prompt: string): Promise<GeneratedRealm> {
   const computeConfig = getComputeConfig();
   if (!computeConfig) {
     return fallbackRealm(prompt);
@@ -114,6 +250,8 @@ Return JSON with keys:
 - title (string)
 - lore (string, 2-3 sentences)
 - assets (array of {type: "biome"|"npc"|"quest"|"artifact", name: string, description: string})
+- visualTheme ({id, palette:{bg,floor,wall,accent,glow}, motifs:string[], tileStyle:"organic"|"ruin"|"cyber"|"royal"})
+- map ({width,height,spawn,boss,tiles}) where tiles is a 2D array of {type, assetName?, motif?}
 - layout ({style: "grove"|"labyrinth"|"corridor"|"sanctum", wallDensity: number between 0.05 and 0.2, landmarkIcons: string[], bossIcon?: string})
 `,
       {
@@ -130,6 +268,19 @@ Return JSON with keys:
         title: parsed.title || inferred.title,
         lore: parsed.lore || result.text.slice(0, 500),
         assets: Array.isArray(parsed.assets) && parsed.assets.length > 0 ? parsed.assets : inferred.assets,
+        visualTheme: parsed.visualTheme?.palette ? {
+          id: typeof parsed.visualTheme.id === "string" ? parsed.visualTheme.id : inferred.visualTheme.id,
+          palette: {
+            bg: parsed.visualTheme.palette.bg || inferred.visualTheme.palette.bg,
+            floor: parsed.visualTheme.palette.floor || inferred.visualTheme.palette.floor,
+            wall: parsed.visualTheme.palette.wall || inferred.visualTheme.palette.wall,
+            accent: parsed.visualTheme.palette.accent || inferred.visualTheme.palette.accent,
+            glow: parsed.visualTheme.palette.glow || inferred.visualTheme.palette.glow,
+          },
+          motifs: Array.isArray(parsed.visualTheme.motifs) ? parsed.visualTheme.motifs.slice(0, 6) : inferred.visualTheme.motifs,
+          tileStyle: ["organic", "ruin", "cyber", "royal"].includes(parsed.visualTheme.tileStyle) ? parsed.visualTheme.tileStyle : inferred.visualTheme.tileStyle,
+        } : inferred.visualTheme,
+        map: parsed.map?.tiles ? parsed.map : inferred.map,
         layout: parsed.layout && Array.isArray(parsed.layout.landmarkIcons)
           ? {
               style: ["grove", "labyrinth", "corridor", "sanctum"].includes(parsed.layout.style) ? parsed.layout.style : inferred.layout.style,
@@ -148,6 +299,8 @@ Return JSON with keys:
         title: inferred.title,
         lore: result.text.slice(0, 500),
         assets: inferred.assets,
+        visualTheme: inferred.visualTheme,
+        map: inferred.map,
         layout: inferred.layout,
       };
     }
@@ -258,6 +411,8 @@ export async function POST(req: NextRequest) {
         assets: generated.assets,
         version: Number(body.currentRealmCount || 0) + 1,
         previousRealmRootURI: body.currentRealmRootURI || "",
+        visualTheme: generated.visualTheme,
+        map: generated.map,
         layout: generated.layout,
       });
 

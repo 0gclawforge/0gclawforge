@@ -16,12 +16,40 @@ export interface RealmPayload {
   assets: RealmAsset[];
   version?: number;
   previousRealmRootURI?: string;
+  visualTheme?: {
+    id: "forest" | "desert" | "cave" | "neon" | "citadel" | "default";
+    palette: {
+      bg: string;
+      floor: string;
+      wall: string;
+      accent: string;
+      glow: string;
+    };
+    motifs: string[];
+    tileStyle: "organic" | "ruin" | "cyber" | "royal";
+  };
+  map?: RealmMap;
   layout?: {
     style: "grove" | "labyrinth" | "corridor" | "sanctum";
     wallDensity: number;
     landmarkIcons: string[];
     bossIcon?: string;
   };
+}
+
+export interface RealmMap {
+  width: number;
+  height: number;
+  spawn: { x: number; y: number };
+  boss: { x: number; y: number };
+  exit?: { x: number; y: number };
+  tiles: RealmMapTile[][];
+}
+
+export interface RealmMapTile {
+  type: "wall" | "floor" | "npc" | "quest" | "artifact" | "boss" | "decoration" | "exit";
+  assetName?: string;
+  motif?: string;
 }
 
 export interface RealmRecord {
@@ -87,7 +115,7 @@ export interface Tile {
 }
 
 export interface BiomeTheme {
-  id: "forest" | "desert" | "cave" | "default";
+  id: "forest" | "desert" | "cave" | "neon" | "citadel" | "default";
   name: string;
   floorClass: string;
   wallIcon: string;
@@ -98,7 +126,7 @@ export interface BiomeTheme {
 }
 
 export type EncounterModal =
-  | { type: "npc"; asset: RealmAsset; result?: string }
+  | { type: "npc"; asset: RealmAsset; result?: string; loading?: boolean }
   | { type: "quest"; asset: RealmAsset; result?: string }
   | { type: "boss"; result?: string };
 
@@ -113,4 +141,10 @@ export interface SaveProgressPayload {
   bossDefeated: boolean;
   playerAddress: Address;
   completedAt?: number;
+}
+
+export interface NpcDialogueResponse {
+  npcName: string;
+  reply: string;
+  memorySignal?: string;
 }

@@ -186,7 +186,7 @@ function generateMap(realm: RealmPayload) {
 }
 
 function bossMaxHp(realm: RealmPayload | null) {
-  return 50 + (realm?.assets.length ?? 0) * 10;
+  return 32 + (realm?.assets.length ?? 0) * 6;
 }
 
 function appendLog(current: string[], next: string | string[]) {
@@ -402,7 +402,12 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
       if (tile.type === "npc" && tile.asset) setModal({ type: "npc", asset: tile.asset });
       if (tile.type === "quest" && tile.asset) setModal({ type: "quest", asset: tile.asset });
       if (tile.type === "artifact" && tile.asset) collectArtifact(tile.asset, x, y);
-      if (tile.type === "boss") setModal({ type: "boss" });
+      if (tile.type === "boss") {
+        setModal({
+          type: "boss",
+          result: "The boss challenges your clan. Attack to start combat. Defeating it opens the realm exit.",
+        });
+      }
       if (tile.type === "exit") setCompleted(true);
     },
     [collectArtifact]
@@ -508,8 +513,8 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
     if (!gameState || !realmPayload) return;
     const roll = rollDie(20);
     const total = roll + gameState.level;
-    const hit = total > 10;
-    const damage = hit ? 4 + rollDie(11) : 0;
+    const hit = total >= 8;
+    const damage = hit ? 8 + rollDie(8) + gameState.level * 2 : 0;
     const nextBossHp = Math.max(0, bossHp - damage);
     const combatLog = hit
       ? [`You hit the boss for ${damage}. Roll ${roll} + level ${gameState.level} = ${total}.`]
@@ -541,7 +546,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
       return;
     }
 
-    const bossDamage = 7 + rollDie(13);
+    const bossDamage = 3 + rollDie(6) + Math.max(0, Math.floor((realmPayload.assets.length - 2) / 3));
     const nextHp = gameState.hp - bossDamage;
 
     if (nextHp <= 0) {
@@ -806,7 +811,9 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
                 Save progress
               </button>
               <p className="text-xs leading-5 text-stone">
-                {canPersist ? "Manual saves persist progress to 0G Storage. Completion also records an on-chain clan evolution." : "Connect as the clan owner to enable progress saves."}
+                {canPersist
+                  ? "Manual saves persist progress to 0G Storage without a wallet transaction. Only the final completion flow records an on-chain clan evolution."
+                  : "Connect as the clan owner to enable progress saves. Movement, combat, and NPC interactions never require a wallet transaction."}
               </p>
               {saveStatus && <p className="break-words rounded-md border border-white/10 bg-black/25 p-3 font-mono text-xs text-parchment">{saveStatus}</p>}
             </Panel>

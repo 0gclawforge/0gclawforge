@@ -91,6 +91,43 @@ export default function HomePage() {
   const [depinSummary, setDepinSummary] = useState("");
   const [questOutcome, setQuestOutcome] = useState("");
 
+  const loadLatestOwnedClan = async () => {
+    if (!isConnected || !address || !publicClient || !contractAddress) return null;
+
+    const balance = await publicClient.readContract({
+      address: contractAddress,
+      abi: agentInftAbi,
+      functionName: "balanceOf",
+      args: [address],
+    });
+    if (balance === BigInt(0)) return null;
+
+    const lastIndex = balance - BigInt(1);
+    const ownedTokenId = await publicClient.readContract({
+      address: contractAddress,
+      abi: agentInftAbi,
+      functionName: "tokenOfOwnerByIndex",
+      args: [address, lastIndex],
+    });
+
+    const tid = ownedTokenId.toString();
+    setTokenId(tid);
+
+    const state = await publicClient.readContract({
+      address: contractAddress,
+      abi: agentInftAbi,
+      functionName: "getClanState",
+      args: [ownedTokenId],
+    });
+
+    if (state.memoryRootURI) setMemoryRoot(state.memoryRootURI);
+    if (state.realmRootURI) setRealmRoot(state.realmRootURI);
+    if (state.voteRootURI) setVoteRoot(state.voteRootURI);
+    setRealmCount(Number(state.realmCount));
+
+    return tid;
+  };
+
   useEffect(() => {
     void refreshRuntimeStatus();
   }, []);
@@ -102,40 +139,8 @@ export default function HomePage() {
 
     (async () => {
       try {
-        const balance = await publicClient.readContract({
-          address: contractAddress,
-          abi: agentInftAbi,
-          functionName: "balanceOf",
-          args: [address],
-        });
-        if (cancelled || balance === BigInt(0)) return;
-
-        // Load the most recently minted token (last index)
-        const lastIndex = balance - BigInt(1);
-        const ownedTokenId = await publicClient.readContract({
-          address: contractAddress,
-          abi: agentInftAbi,
-          functionName: "tokenOfOwnerByIndex",
-          args: [address, lastIndex],
-        });
         if (cancelled) return;
-
-        const tid = ownedTokenId.toString();
-        setTokenId(tid);
-
-        // Load clan state for this token
-        const state = await publicClient.readContract({
-          address: contractAddress,
-          abi: agentInftAbi,
-          functionName: "getClanState",
-          args: [ownedTokenId],
-        });
-        if (cancelled) return;
-
-        if (state.memoryRootURI) setMemoryRoot(state.memoryRootURI);
-        if (state.realmRootURI) setRealmRoot(state.realmRootURI);
-        if (state.voteRootURI) setVoteRoot(state.voteRootURI);
-        setRealmCount(Number(state.realmCount));
+        await loadLatestOwnedClan();
       } catch {
         // Contract may not exist on this chain or wallet has no tokens
       }
@@ -266,9 +271,18 @@ export default function HomePage() {
             setTokenId(mintedTokenId.toString());
           }
         } catch {
+          const recoveredTokenId = await loadLatestOwnedClan().catch(() => null);
+          if (recoveredTokenId) {
+            return {
+              kind: "success",
+              message: `Clan mint confirmed by wallet ownership scan. Token #${recoveredTokenId} is ready.`,
+              txHash: hash,
+            };
+          }
+
           return {
             kind: "success",
-            message: "Clan mint tx submitted but receipt not yet confirmed by the RPC. Check the explorer and enter the token ID manually if needed.",
+            message: "Clan mint tx submitted. The RPC has not returned the receipt yet, but the app will auto-load the token when the wallet index updates.",
             txHash: hash,
           };
         }

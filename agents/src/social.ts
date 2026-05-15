@@ -52,6 +52,7 @@ export class TelegramClanBot {
       commands: JSON.stringify([
         { command: "status", description: "Show clan status" },
         { command: "proposal", description: "Create a proposal" },
+        { command: "propose", description: "Create a proposal (alias)" },
         { command: "quest", description: "Run autonomous quest" },
         { command: "depin", description: "Fetch live DePIN snapshot" },
       ]),
@@ -153,9 +154,12 @@ export class TelegramClanBot {
     if (cleaned.startsWith("/status")) return this.handler.onStatus("telegram");
     if (cleaned.startsWith("/quest")) return this.handler.onQuestRun("telegram");
     if (cleaned.startsWith("/depin")) return this.handler.onDepinSnapshot("telegram");
-    if (cleaned.startsWith("/proposal")) {
-      const proposal = cleaned.replace("/proposal", "").trim();
-      return this.handler.onProposalCreate("telegram", proposal || "New proposal from Telegram");
+    if (cleaned.startsWith("/proposal") || cleaned.startsWith("/propose")) {
+      const proposal = cleaned.replace(/^\/(proposal|propose)\s*/, "").trim();
+      if (!proposal) {
+        return "Please include your proposal text. Example:\n/propose Add a dragon boss to the forest realm";
+      }
+      return this.handler.onProposalCreate("telegram", proposal);
     }
     if (cleaned.startsWith("/start") || cleaned.startsWith("/help")) {
       return [
@@ -165,6 +169,7 @@ export class TelegramClanBot {
         "/quest - Run an autonomous quest cycle",
         "/depin - Fetch live WeatherXM snapshot",
         "/proposal <text> - Create a DAO proposal",
+        "/propose <text> - Alias for /proposal",
       ].join("\n");
     }
     return null;

@@ -81,7 +81,6 @@ export async function POST(req: NextRequest, { params }: { params: { tokenId: st
     if (!npc) throw new Error("NPC not found in active realm.");
 
     const client = new ZGComputeClient(computeConfig);
-    await client.setupProvider(computeConfig.providerAddress);
 
     const result = await client.query(
       `You are ${npc.name} inside the realm "${realm.title}", directed by ${AUTONOMOUS_MODEL_NAME}.

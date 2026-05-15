@@ -105,7 +105,6 @@ export async function POST(req: NextRequest, { params }: { params: { tokenId: st
       .join("\n");
 
     const client = new ZGComputeClient(computeConfig);
-    await client.setupProvider(computeConfig.providerAddress);
 
     const result = await client.query(
       `${realmContext}

@@ -16,6 +16,18 @@ interface PlayableRealm {
   clanState: ClanState;
 }
 
+function unwrapRealm(record: RealmRecord | { payload?: RealmRecord["payload"]; createdAt?: number }): RealmRecord {
+  if (record.payload?.title && Array.isArray(record.payload.assets)) {
+    return {
+      kind: "ugc-realm",
+      payload: record.payload,
+      createdAt: record.createdAt ?? Date.now(),
+    };
+  }
+
+  throw new Error("Storage record is not a valid ugc-realm payload");
+}
+
 function normalizeClanState(raw: unknown): ClanState {
   const state = raw as {
     memoryRootURI?: string;
@@ -93,10 +105,24 @@ export default function PlayDiscoveryPage() {
           const response = await fetch(`/api/realm/${ownedTokenId.toString()}?chainId=${chainId}`, { cache: "no-store" });
           if (!response.ok) continue;
           const payload = (await response.json()) as RealmApiResponse;
-          discovered.push({ tokenId: ownedTokenId.toString(), realm: payload.realm, clanState: payload.clanState });
+
+          try {
+            discovered.push({
+              tokenId: ownedTokenId.toString(),
+              realm: unwrapRealm(payload.realm),
+              clanState: payload.clanState,
+            });
+          } catch {
+            continue;
+          }
         }
 
-        if (!cancelled) setRealms(discovered);
+        if (!cancelled) {
+          setRealms(discovered);
+          if (discovered.length < Number(balance)) {
+            setStatus("Some owned realms were skipped because their stored payloads are invalid or not yet playable.");
+          }
+        }
       } catch (error) {
         if (!cancelled) {
           setStatus(error instanceof Error ? error.message : "Failed to discover playable realms");

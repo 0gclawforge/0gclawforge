@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
+import { getAgentInftAddress } from "../../../lib/contract-addresses";
 
 const INFT_ABI = [
   "function balanceOf(address) view returns (uint256)",
@@ -14,7 +15,7 @@ export async function GET(req: NextRequest) {
   try {
     const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_OG_RPC_URL);
     const contract = new ethers.Contract(
-      process.env.NEXT_PUBLIC_AGENT_INFT_ADDRESS || "",
+      getAgentInftAddress(),
       INFT_ABI,
       provider
     );

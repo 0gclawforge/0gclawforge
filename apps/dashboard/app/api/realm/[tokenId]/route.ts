@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { agentInftAbi, downloadFromStorage, uploadJSON } from "@0gclawforge/sdk";
 import type { StorageConfig } from "@0gclawforge/sdk";
+import { getAgentInftAddress } from "../../../../lib/contract-addresses";
 
 interface RealmProgress {
   completed: boolean;
@@ -53,9 +54,7 @@ function getContractConfig(chainId?: string | null) {
   const rpcUrl = useMainnet
     ? process.env.NEXT_PUBLIC_OG_MAINNET_RPC_URL || process.env.VITE_MAINNET_RPC_URL || "https://evmrpc.0g.ai"
     : process.env.VITE_RPC_URL || process.env.NEXT_PUBLIC_OG_RPC_URL || "https://evmrpc-testnet.0g.ai";
-  const address = useMainnet
-    ? process.env.NEXT_PUBLIC_AGENT_INFT_MAINNET_ADDRESS || process.env.NEXT_PUBLIC_AGENT_INFT_ADDRESS
-    : process.env.NEXT_PUBLIC_AGENT_INFT_ADDRESS;
+  const address = getAgentInftAddress(useMainnet ? 16661 : 16602);
 
   if (!address) {
     throw new Error("Agent iNFT contract address is not configured");

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { uploadAgentIntelligence, INFTClient } from "@0gclawforge/sdk";
 import { createCipheriv, randomBytes } from "crypto";
+import { getAgentInftAddress } from "../../../lib/contract-addresses";
 
 function encryptBlob(plaintext: string, key: Buffer): string {
   const iv = randomBytes(16);
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
 
     const rpcUrl = process.env.NEXT_PUBLIC_OG_RPC_URL;
     const indexerUrl = process.env.OG_STORAGE_INDEXER_TURBO;
-    const inftAddress = process.env.NEXT_PUBLIC_AGENT_INFT_ADDRESS;
+    const inftAddress = getAgentInftAddress();
 
     if (!rpcUrl || !indexerUrl) {
       return NextResponse.json({ error: "0G endpoints not configured" }, { status: 500 });

@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { type Address } from "viem";
 import { useAccount, useChainId, usePublicClient } from "wagmi";
 import { agentInftAbi } from "@0gclawforge/sdk/inft";
+import { getAgentInftAddress } from "../../lib/contract-addresses";
 import type { ClanState, RealmApiResponse, RealmRecord } from "./[tokenId]/types";
 
 interface PlayableRealm {
@@ -47,9 +48,7 @@ export default function PlayDiscoveryPage() {
   const [status, setStatus] = useState("");
 
   const contractAddress = useMemo(() => {
-    const testnet = process.env.NEXT_PUBLIC_AGENT_INFT_ADDRESS as Address | undefined;
-    const mainnet = process.env.NEXT_PUBLIC_AGENT_INFT_MAINNET_ADDRESS as Address | undefined;
-    return chainId === 16661 ? mainnet ?? testnet : testnet;
+    return getAgentInftAddress(chainId) as Address;
   }, [chainId]);
 
   useEffect(() => {

@@ -21,6 +21,7 @@ import {
 import { parseEther, parseEventLogs, type Address, type Hex } from "viem";
 import { useAccount, useChainId, usePublicClient, useWriteContract } from "wagmi";
 import { agentInftAbi } from "../lib/agent-inft-abi";
+import { getAgentInftAddress } from "../lib/contract-addresses";
 
 type Tab = "mint" | "realm" | "governance" | "evolution" | "trade";
 type StatusKind = "idle" | "working" | "success" | "error";
@@ -57,8 +58,6 @@ const tabs: Array<{ id: Tab; label: string }> = [
   { id: "trade", label: "Trade" },
 ];
 
-const galileoContractAddress = process.env.NEXT_PUBLIC_AGENT_INFT_ADDRESS as Address | undefined;
-const mainnetContractAddress = process.env.NEXT_PUBLIC_AGENT_INFT_MAINNET_ADDRESS as Address | undefined;
 const galileoExplorerUrl = process.env.NEXT_PUBLIC_OG_EXPLORER || "https://chainscan-galileo.0g.ai";
 const mainnetExplorerUrl = process.env.NEXT_PUBLIC_OG_MAINNET_EXPLORER || "https://chainscan.0g.ai";
 
@@ -67,7 +66,7 @@ export default function HomePage() {
   const chainId = useChainId();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
-  const contractAddress = chainId === 16661 ? mainnetContractAddress : galileoContractAddress;
+  const contractAddress = getAgentInftAddress(chainId) as Address;
   const explorerUrl = chainId === 16661 ? mainnetExplorerUrl : galileoExplorerUrl;
 
   const [activeTab, setActiveTab] = useState<Tab>("mint");
@@ -150,7 +149,7 @@ export default function HomePage() {
       throw new Error("Connect a wallet first.");
     }
     if (!contractAddress) {
-      throw new Error("NEXT_PUBLIC_AGENT_INFT_ADDRESS is not configured. Deploy contracts and update .env.");
+      throw new Error("Agent iNFT contract address is not configured for this network.");
     }
   };
 

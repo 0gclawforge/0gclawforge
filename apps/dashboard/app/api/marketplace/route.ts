@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
+import { getAgentInftAddress } from "../../../lib/contract-addresses";
 
 const INFT_ABI = [
   "function totalSupply() view returns (uint256)",
@@ -9,7 +10,7 @@ const INFT_ABI = [
 
 export async function GET() {
   try {
-    const contractAddr = process.env.NEXT_PUBLIC_AGENT_INFT_ADDRESS;
+    const contractAddr = getAgentInftAddress();
     if (!contractAddr) {
       return NextResponse.json({ listings: [] });
     }

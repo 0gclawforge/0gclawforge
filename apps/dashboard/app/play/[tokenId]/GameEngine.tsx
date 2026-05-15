@@ -24,6 +24,7 @@ import { useSearchParams } from "next/navigation";
 import { type Address, type Hex } from "viem";
 import { useAccount, useChainId, useReadContract, useWriteContract } from "wagmi";
 import { agentInftAbi } from "@0gclawforge/sdk/inft";
+import { getAgentInftAddress } from "../../../lib/contract-addresses";
 import type {
   BiomeTheme,
   ClanState,
@@ -274,9 +275,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
   const { writeContractAsync } = useWriteContract();
 
   const contractAddress = useMemo(() => {
-    const testnet = process.env.NEXT_PUBLIC_AGENT_INFT_ADDRESS as Address | undefined;
-    const mainnet = process.env.NEXT_PUBLIC_AGENT_INFT_MAINNET_ADDRESS as Address | undefined;
-    return chainId === 16661 ? mainnet ?? testnet : testnet;
+    return getAgentInftAddress(chainId) as Address;
   }, [chainId]);
 
   const tokenIdBig = useMemo(() => (/^\d+$/.test(tokenId) ? BigInt(tokenId) : undefined), [tokenId]);

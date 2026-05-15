@@ -42,3 +42,44 @@ body {
 .animate-pulse-glow {
   animation: pulse-glow 2s ease-in-out infinite;
 }
+
+.tile-player {
+  animation: tile-player-pulse 1.8s ease-in-out infinite;
+}
+
+.tile-quest {
+  animation: tile-quest-glow 1.4s ease-in-out infinite alternate;
+}
+
+.tile-artifact {
+  animation: tile-artifact-sparkle 1.2s ease-in-out infinite;
+}
+
+.tile-boss {
+  animation: tile-boss-breathe 2.2s ease-in-out infinite;
+}
+
+.fantasy-scrollbar {
+  scrollbar-color: rgba(215, 168, 74, 0.45) rgba(255, 255, 255, 0.06);
+  scrollbar-width: thin;
+}
+
+@keyframes tile-player-pulse {
+  0%, 100% { box-shadow: 0 0 0 rgba(215, 168, 74, 0.18); }
+  50% { box-shadow: 0 0 24px rgba(215, 168, 74, 0.48); }
+}
+
+@keyframes tile-quest-glow {
+  from { box-shadow: 0 0 10px rgba(110, 84, 255, 0.28); }
+  to { box-shadow: 0 0 24px rgba(110, 84, 255, 0.6); }
+}
+
+@keyframes tile-artifact-sparkle {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+@keyframes tile-boss-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}

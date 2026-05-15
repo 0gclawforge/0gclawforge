@@ -1,6 +1,140 @@
 import { ethers } from "ethers";
 import type { AgentMintParams, ClanMintParams } from "./types";
 
+export const agentInftAbi = [
+  {
+    type: "function",
+    name: "mintClan",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "clanName", type: "string" },
+      { name: "archetype", type: "string" },
+      { name: "modelType", type: "string" },
+      { name: "metadataHash", type: "bytes32" },
+      { name: "storageURI", type: "string" },
+      { name: "memoryRootURI", type: "string" },
+      { name: "realmRootURI", type: "string" },
+    ],
+    outputs: [{ name: "tokenId", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "updateRealmRoot",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "tokenId", type: "uint256" },
+      { name: "newRealmRootURI", type: "string" },
+      { name: "newRealmCount", type: "uint256" },
+      { name: "proof", type: "bytes" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "updateVoteRoot",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "tokenId", type: "uint256" },
+      { name: "newVoteRootURI", type: "string" },
+      { name: "newProposalCount", type: "uint256" },
+      { name: "proof", type: "bytes" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "recordClanEvolution",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "tokenId", type: "uint256" },
+      { name: "newMetadataHash", type: "bytes32" },
+      { name: "newStorageURI", type: "string" },
+      { name: "newMemoryRootURI", type: "string" },
+      { name: "newRealmRootURI", type: "string" },
+      { name: "newMemorySize", type: "uint256" },
+      { name: "newRealmCount", type: "uint256" },
+      { name: "proof", type: "bytes" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "getClanState",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [
+      {
+        type: "tuple",
+        components: [
+          { name: "memoryRootURI", type: "string" },
+          { name: "realmRootURI", type: "string" },
+          { name: "voteRootURI", type: "string" },
+          { name: "realmCount", type: "uint256" },
+          { name: "proposalCount", type: "uint256" },
+          { name: "evolutionCount", type: "uint256" },
+        ],
+      },
+    ],
+  },
+  {
+    type: "function",
+    name: "getAgentData",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [
+      {
+        type: "tuple",
+        components: [
+          { name: "metadataHash", type: "bytes32" },
+          { name: "encryptedStorageURI", type: "string" },
+          { name: "agentName", type: "string" },
+          { name: "agentPersonality", type: "string" },
+          { name: "modelType", type: "string" },
+          { name: "skillCount", type: "uint256" },
+          { name: "taskCount", type: "uint256" },
+          { name: "memorySize", type: "uint256" },
+          { name: "createdAt", type: "uint256" },
+          { name: "lastActiveAt", type: "uint256" },
+          { name: "isListedForSale", type: "bool" },
+          { name: "salePrice", type: "uint256" },
+        ],
+      },
+    ],
+  },
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "tokenOfOwnerByIndex",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "index", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "ownerOf",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "totalSupply",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
+
 // ABI subset for AgentINFT interactions
 const AGENT_INFT_ABI = [
   "function mint(address to, string agentName, string personality, string modelType, bytes32 metadataHash, string storageURI) returns (uint256)",

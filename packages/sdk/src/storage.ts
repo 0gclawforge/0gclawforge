@@ -2,6 +2,10 @@ import { Indexer, MemData } from "@0gfoundation/0g-ts-sdk";
 import { ethers } from "ethers";
 import type { StorageConfig, UploadResult } from "./types";
 
+function normalizeStorageRoot(rootHashOrUri: string): string {
+  return rootHashOrUri.replace(/^0g:\/\//i, "").replace(/^zg:\/\//i, "").trim();
+}
+
 async function resolveUploadOptions(provider: ethers.JsonRpcProvider): Promise<{
   gasPrice?: bigint;
 }> {
@@ -21,6 +25,10 @@ export async function uploadToStorage(
   data: Buffer | string,
   config: StorageConfig
 ): Promise<UploadResult> {
+  if (!config.privateKey) {
+    throw new Error("PRIVATE_KEY is required for 0G Storage uploads");
+  }
+
   const provider = new ethers.JsonRpcProvider(config.rpcUrl);
   const signer = new ethers.Wallet(config.privateKey, provider);
   const indexer = new Indexer(config.indexerUrl);
@@ -51,10 +59,23 @@ export async function uploadJSON(
 }
 
 export async function downloadFromStorage(
-  rootHash: string,
+  rootHashOrUri: string,
   outputPath: string,
   config: StorageConfig
 ): Promise<void> {
+  const rootHash = normalizeStorageRoot(rootHashOrUri);
+
+  if (/^https?:\/\//i.test(rootHash)) {
+    const response = await fetch(rootHash);
+    if (!response.ok) {
+      throw new Error(`0G Storage download failed: ${response.status} ${response.statusText}`);
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(outputPath, bytes);
+    return;
+  }
+
   const indexer = new Indexer(config.indexerUrl);
   const err = await indexer.download(rootHash, outputPath, true);
   if (err !== null) throw new Error(`0G Storage download failed: ${err}`);

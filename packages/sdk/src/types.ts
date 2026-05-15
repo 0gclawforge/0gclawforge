@@ -1,7 +1,7 @@
 export interface StorageConfig {
   rpcUrl: string;
   indexerUrl: string;
-  privateKey: string;
+  privateKey?: string;
 }
 
 export interface ComputeConfig {

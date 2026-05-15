@@ -546,6 +546,7 @@ export default function HomePage() {
               setMission={setMission}
               tokenId={tokenId}
               setTokenId={setTokenId}
+              realmRoot={realmRoot}
               realmPrompt={realmPrompt}
               setRealmPrompt={setRealmPrompt}
               proposal={proposal}
@@ -605,6 +606,7 @@ function Workspace(props: {
   setMission: (value: string) => void;
   tokenId: string;
   setTokenId: (value: string) => void;
+  realmRoot: string;
   realmPrompt: string;
   setRealmPrompt: (value: string) => void;
   proposal: string;
@@ -653,6 +655,14 @@ function Workspace(props: {
         <TextInput label="Clan token ID" value={props.tokenId} onChange={props.setTokenId} />
         <TextArea label="OpenClaw realm prompt" value={props.realmPrompt} onChange={props.setRealmPrompt} />
         <ActionButton onClick={props.storeRealm} busy={props.busy} label="Store realm and update root" />
+        {props.realmRoot && props.tokenId && (
+          <a
+            href={`/play/${props.tokenId}`}
+            className="inline-flex items-center gap-2 rounded-lg border border-gold/40 px-5 py-2.5 text-sm font-semibold text-gold transition hover:bg-gold hover:text-obsidian"
+          >
+            Play this Realm →
+          </a>
+        )}
       </Panel>
     );
   }

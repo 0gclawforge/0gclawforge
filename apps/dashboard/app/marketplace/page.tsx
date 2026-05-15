@@ -198,6 +198,12 @@ export default function MarketplacePage() {
                 >
                   {buying === clan.tokenId ? "Purchasing..." : !isConnected ? "Connect Wallet" : "Buy Clan"}
                 </button>
+                <a
+                  href={`/play/${clan.tokenId}?spectator=1`}
+                  className="block w-full rounded-md border border-gold/40 py-2.5 text-center font-bold text-gold transition hover:bg-gold hover:text-obsidian"
+                >
+                  Preview Realm
+                </a>
               </div>
             </motion.div>
           ))}

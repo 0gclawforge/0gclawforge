@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import { uploadJSON, ZGComputeClient } from "@0gclawforge/sdk";
 
 interface ClanApiBody {
-  action: "prepareMint" | "storeRealm" | "storeVote" | "storeEvolution";
+  action: "prepareMint" | "storeRealm" | "storeVote" | "storeEvolution" | "recordMemoryEntry";
   clanName?: string;
   archetype?: string;
   mission?: string;
@@ -15,6 +15,7 @@ interface ClanApiBody {
   noVotes?: number;
   currentRealmCount?: number;
   executor?: string;
+  entry?: string;
 }
 
 function readPrivateKey(): string {
@@ -229,6 +230,26 @@ export async function POST(req: NextRequest) {
         memorySize: evolution.memorySize,
         realmCount: Number(body.currentRealmCount || 0) + 1,
         storageTxHash: evolution.txHash,
+      });
+    }
+
+    if (body.action === "recordMemoryEntry") {
+      if (!body.tokenId || !body.entry) {
+        return NextResponse.json({ error: "tokenId and entry are required" }, { status: 400 });
+      }
+
+      const memory = await storeRecord("clan-memory-entry", {
+        tokenId: body.tokenId,
+        content: body.entry,
+        tags: ["realm", "completion", "gameplay"],
+        importance: 1,
+        executor: body.executor || "unknown",
+      });
+
+      return NextResponse.json({
+        memoryRootURI: memory.storageURI,
+        metadataHash: memory.metadataHash,
+        storageTxHash: memory.txHash,
       });
     }
 

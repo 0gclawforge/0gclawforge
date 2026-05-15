@@ -25,6 +25,9 @@ const config: Config = {
         sans: ["Inter", "sans-serif"],
         mono: ["JetBrains Mono", "monospace"],
       },
+      boxShadow: {
+        glow: "0 0 28px rgba(215, 168, 74, 0.24)",
+      },
     },
   },
   plugins: [],

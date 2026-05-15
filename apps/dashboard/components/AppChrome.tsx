@@ -22,6 +22,9 @@ export function AppChrome({ children }: { children: React.ReactNode }) {
             <a href="/marketplace" className="text-sm text-stone/80 transition hover:text-parchment">
               Marketplace
             </a>
+            <a href="/docs" className="text-sm text-stone/80 transition hover:text-parchment">
+              Docs
+            </a>
           </div>
           <WalletConnect />
         </div>

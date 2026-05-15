@@ -452,17 +452,23 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
   }, [gameState, grid, movePlayer, triggerInteraction]);
 
   const talkToNpc = (asset: RealmAsset) => {
+    const firstConversation = !gameState?.npcsSpoken.includes(asset.name);
+    const dialogue = firstConversation
+      ? `${asset.name}: ${asset.description} You feel a pulse of remembered history.`
+      : `${asset.name}: We have already spoken, but the memory remains.`;
+
     setGameState((state) => {
       if (!state) return state;
-      const firstConversation = !state.npcsSpoken.includes(asset.name);
-      const dialogue = `${asset.name}: ${asset.description}`;
       const nextState = {
         ...state,
         npcsSpoken: firstConversation ? [...state.npcsSpoken, asset.name] : state.npcsSpoken,
       };
-      return firstConversation ? applyRewards(nextState, 10, 0, [dialogue]) : { ...nextState, gameLog: appendLog(nextState.gameLog, dialogue) };
+      return firstConversation
+        ? applyRewards(nextState, 10, 0, [dialogue])
+        : { ...nextState, gameLog: appendLog(nextState.gameLog, dialogue) };
     });
-    setModal(null);
+    setToast(`Spoke with ${asset.name}`);
+    setModal((current) => (current && current.type === "npc" ? { ...current, result: dialogue } : current));
   };
 
   const attemptQuest = (asset: RealmAsset) => {
@@ -885,7 +891,7 @@ function EncounterDialog(props: {
   const { modal } = props;
   const title = modal.type === "boss" ? props.bossName : modal.asset.name;
   const description = modal.type === "boss" ? "A realm boss bars the path to completion. Strike, endure, and force open the exit." : modal.asset.description;
-  const result = modal.type === "npc" ? undefined : modal.result;
+  const result = modal.result;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">

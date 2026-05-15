@@ -81,7 +81,7 @@ export interface BiomeTheme {
 }
 
 export type EncounterModal =
-  | { type: "npc"; asset: RealmAsset }
+  | { type: "npc"; asset: RealmAsset; result?: string }
   | { type: "quest"; asset: RealmAsset; result?: string }
   | { type: "boss"; result?: string };
 

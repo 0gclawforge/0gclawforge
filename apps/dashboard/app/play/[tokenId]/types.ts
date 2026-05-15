@@ -14,6 +14,12 @@ export interface RealmPayload {
   title: string;
   lore: string;
   assets: RealmAsset[];
+  layout?: {
+    style: "grove" | "labyrinth" | "corridor" | "sanctum";
+    wallDensity: number;
+    landmarkIcons: string[];
+    bossIcon?: string;
+  };
 }
 
 export interface RealmRecord {

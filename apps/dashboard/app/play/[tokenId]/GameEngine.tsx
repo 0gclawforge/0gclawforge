@@ -120,6 +120,12 @@ function selectTheme(realm: RealmPayload): BiomeTheme {
 function generateMap(realm: RealmPayload) {
   const theme = selectTheme(realm);
   const random = mulberry32(hashSeed(`${realm.tokenId}:${realm.title}:${realm.lore}`));
+  const layout = realm.layout ?? {
+    style: "grove" as const,
+    wallDensity: 0.08,
+    landmarkIcons: theme.decorationIcons,
+    bossIcon: "🐉",
+  };
   const grid: Tile[][] = Array.from({ length: MAP_SIZE }, () =>
     Array.from({ length: MAP_SIZE }, () => ({ ...EMPTY_TILE }))
   );
@@ -155,7 +161,46 @@ function generateMap(realm: RealmPayload) {
   };
 
   const bossX = Math.min(MAP_SIZE - 2, Math.max(1, Math.floor(MAP_SIZE / 2)));
-  grid[2][bossX] = { type: "boss", icon: "🐉", passable: true };
+  grid[2][bossX] = { type: "boss", icon: layout.bossIcon || "🐉", passable: true };
+
+  const carveBarrier = (x: number, y: number) => {
+    if (x <= 0 || y <= 0 || x >= MAP_SIZE - 1 || y >= MAP_SIZE - 1) return;
+    if ((x === PLAYER_SPAWN.x && y === PLAYER_SPAWN.y) || (x === bossX && y === 2)) return;
+    grid[y][x] = { type: "wall", icon: theme.wallIcon, passable: false };
+  };
+
+  if (layout.style === "labyrinth") {
+    for (let x = 3; x < MAP_SIZE - 3; x += 3) {
+      const gapY = 2 + Math.floor(random() * (MAP_SIZE - 4));
+      for (let y = 1; y < MAP_SIZE - 1; y++) {
+        if (y !== gapY) carveBarrier(x, y);
+      }
+    }
+  } else if (layout.style === "corridor") {
+    for (let y = 3; y < MAP_SIZE - 3; y += 3) {
+      const gapX = 1 + Math.floor(random() * (MAP_SIZE - 2));
+      for (let x = 1; x < MAP_SIZE - 1; x++) {
+        if (Math.abs(x - gapX) > 1) carveBarrier(x, y);
+      }
+    }
+  } else if (layout.style === "sanctum") {
+    for (let x = bossX - 2; x <= bossX + 2; x++) {
+      carveBarrier(x, 4);
+    }
+    carveBarrier(bossX - 2, 3);
+    carveBarrier(bossX + 2, 3);
+  } else {
+    const targetWalls = Math.floor((MAP_SIZE - 2) * (MAP_SIZE - 2) * layout.wallDensity);
+    let placedWalls = 0;
+    while (placedWalls < targetWalls) {
+      const x = 1 + Math.floor(random() * (MAP_SIZE - 2));
+      const y = 1 + Math.floor(random() * (MAP_SIZE - 2));
+      if (grid[y][x].type === "floor" && Math.abs(x - PLAYER_SPAWN.x) + Math.abs(y - PLAYER_SPAWN.y) > 3) {
+        carveBarrier(x, y);
+        placedWalls += 1;
+      }
+    }
+  }
 
   for (const asset of realm.assets.filter((item) => item.type === "npc")) {
     const pos = randomInterior();
@@ -176,7 +221,8 @@ function generateMap(realm: RealmPayload) {
   for (let y = 1; y < MAP_SIZE - 1; y++) {
     for (let x = 1; x < MAP_SIZE - 1; x++) {
       if (grid[y][x].type === "floor" && !(x === PLAYER_SPAWN.x && y === PLAYER_SPAWN.y) && random() < decorationChance) {
-        const icon = theme.decorationIcons[Math.floor(random() * theme.decorationIcons.length)];
+        const decorationPool = layout.landmarkIcons.length > 0 ? layout.landmarkIcons : theme.decorationIcons;
+        const icon = decorationPool[Math.floor(random() * decorationPool.length)];
         grid[y][x] = { type: "decoration", icon, passable: true };
       }
     }

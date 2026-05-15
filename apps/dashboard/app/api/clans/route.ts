@@ -18,6 +18,13 @@ interface ClanApiBody {
   entry?: string;
 }
 
+type RealmLayout = {
+  style: "grove" | "labyrinth" | "corridor" | "sanctum";
+  wallDensity: number;
+  landmarkIcons: string[];
+  bossIcon?: string;
+};
+
 function readPrivateKey(): string {
   const privateKey = process.env.PRIVATE_KEY?.trim();
   if (!privateKey) {
@@ -33,7 +40,63 @@ function getComputeConfig() {
   return { rpcUrl, privateKey: readPrivateKey(), providerAddress };
 }
 
-async function generateRealmWithInference(prompt: string): Promise<{ title: string; lore: string; assets: Array<{ type: string; name: string; description: string }> }> {
+function inferPromptRealm(prompt: string): {
+  title: string;
+  lore: string;
+  assets: Array<{ type: string; name: string; description: string }>;
+  layout: RealmLayout;
+} {
+  const lower = prompt.toLowerCase();
+  const title = `${prompt.split(/\s+/).slice(0, 5).join(" ")} Realm`;
+
+  const biome =
+    /(desert|dune|sand|oasis|sun)/.test(lower) ? "desert"
+      : /(cave|vault|ember|under|crypt|lava|ruin)/.test(lower) ? "cave"
+      : /(castle|fortress|citadel|hall|cathedral)/.test(lower) ? "citadel"
+      : "forest";
+
+  const style: RealmLayout["style"] =
+    /(maze|labyrinth|twist|puzzle)/.test(lower) ? "labyrinth"
+      : /(road|corridor|gauntlet|bridge|passage)/.test(lower) ? "corridor"
+      : /(boss|dragon|throne|sanctum|altar)/.test(lower) ? "sanctum"
+      : "grove";
+
+  const landmarkIcons =
+    biome === "desert" ? ["🌵", "☀", "🏺", "✧"]
+      : biome === "cave" ? ["🪨", "🕯", "💠", "✦"]
+      : biome === "citadel" ? ["🏰", "⚜", "🛡", "✦"]
+      : ["🌿", "🍄", "🌙", "✦"];
+
+  const bossIcon =
+    /(dragon|wyrm|drake)/.test(lower) ? "🐉"
+      : /(lich|necromancer|spirit|ghost)/.test(lower) ? "💀"
+      : /(golem|guardian|construct)/.test(lower) ? "🗿"
+      : "🐉";
+
+  const assets = [
+    { type: "biome", name: `${biome[0].toUpperCase()}${biome.slice(1)} Frontier`, description: `A permanent world space shaped by: ${prompt}` },
+    { type: "npc", name: biome === "citadel" ? "Banner Marshal" : biome === "desert" ? "Dune Oracle" : biome === "cave" ? "Vault Hermit" : "Memory Warden", description: `A guide bound to the realm's core theme: ${prompt}.` },
+    { type: "npc", name: /(merchant|market|trade)/.test(lower) ? "Caravan Broker" : "Rune Keeper", description: "Shares clues about the safest route and what the clan should recover." },
+    { type: "quest", name: /(dragon|boss|wyrm)/.test(lower) ? "Break the Tyrant's Hold" : "First Echo", description: `A quest objective pulled from the realm prompt: ${prompt}.` },
+    { type: "quest", name: style === "labyrinth" ? "Trace the Hidden Path" : style === "corridor" ? "Hold the Narrow Way" : "Awaken the Inner Gate", description: "A second objective that changes how the player navigates the map." },
+    { type: "artifact", name: biome === "desert" ? "Sunglass Sigil" : biome === "cave" ? "Ember Vault Sigil" : biome === "citadel" ? "Throne Seal" : "Clan Sigil", description: "A clan-bound artifact that proves the realm can evolve." },
+    { type: "artifact", name: /(moon|night|star)/.test(lower) ? "Lunar Thread" : "Memory Prism", description: "A secondary reward tied to the prompt's strongest motif." },
+  ];
+
+  return {
+    title,
+    lore: `A playable clan realm forged from the request: ${prompt}. Its layout, encounters, and rewards are tuned to reflect that fantasy instead of using a generic board.`,
+    assets,
+    layout: {
+      style,
+      wallDensity: style === "labyrinth" ? 0.18 : style === "corridor" ? 0.14 : style === "sanctum" ? 0.12 : 0.08,
+      landmarkIcons,
+      bossIcon,
+    },
+  };
+}
+
+async function generateRealmWithInference(prompt: string): Promise<{ title: string; lore: string; assets: Array<{ type: string; name: string; description: string }>; layout: RealmLayout }> {
   const computeConfig = getComputeConfig();
   if (!computeConfig) {
     return fallbackRealm(prompt);
@@ -44,7 +107,14 @@ async function generateRealmWithInference(prompt: string): Promise<{ title: stri
     await client.setupProvider(computeConfig.providerAddress);
 
     const result = await client.query(
-      `Generate a detailed Eternal Clans realm from this prompt: ${prompt}\n\nReturn JSON with keys: title (string), lore (string, 2-3 sentences), assets (array of {type: "biome"|"npc"|"quest"|"artifact", name: string, description: string}).`,
+      `Generate a detailed Eternal Clans realm from this prompt: ${prompt}
+
+Return JSON with keys:
+- title (string)
+- lore (string, 2-3 sentences)
+- assets (array of {type: "biome"|"npc"|"quest"|"artifact", name: string, description: string})
+- layout ({style: "grove"|"labyrinth"|"corridor"|"sanctum", wallDensity: number between 0.05 and 0.2, landmarkIcons: string[], bossIcon?: string})
+`,
       {
         systemPrompt: "You are an OpenClaw realm architect. Generate rich, unique fantasy game realm content. Return only valid JSON.",
         temperature: 0.55,
@@ -54,16 +124,30 @@ async function generateRealmWithInference(prompt: string): Promise<{ title: stri
 
     try {
       const parsed = JSON.parse(result.text);
+      const inferred = inferPromptRealm(prompt);
       return {
-        title: parsed.title || `${prompt.split(/\s+/).slice(0, 4).join(" ")} Realm`,
+        title: parsed.title || inferred.title,
         lore: parsed.lore || result.text.slice(0, 500),
-        assets: Array.isArray(parsed.assets) ? parsed.assets : fallbackRealm(prompt).assets,
+        assets: Array.isArray(parsed.assets) && parsed.assets.length > 0 ? parsed.assets : inferred.assets,
+        layout: parsed.layout && Array.isArray(parsed.layout.landmarkIcons)
+          ? {
+              style: ["grove", "labyrinth", "corridor", "sanctum"].includes(parsed.layout.style) ? parsed.layout.style : inferred.layout.style,
+              wallDensity:
+                typeof parsed.layout.wallDensity === "number"
+                  ? Math.max(0.05, Math.min(0.2, parsed.layout.wallDensity))
+                  : inferred.layout.wallDensity,
+              landmarkIcons: parsed.layout.landmarkIcons.slice(0, 6),
+              bossIcon: typeof parsed.layout.bossIcon === "string" ? parsed.layout.bossIcon : inferred.layout.bossIcon,
+            }
+          : inferred.layout,
       };
     } catch {
+      const inferred = inferPromptRealm(prompt);
       return {
-        title: `${prompt.split(/\s+/).slice(0, 4).join(" ")} Realm`,
+        title: inferred.title,
         lore: result.text.slice(0, 500),
-        assets: fallbackRealm(prompt).assets,
+        assets: inferred.assets,
+        layout: inferred.layout,
       };
     }
   } catch (error) {
@@ -73,16 +157,7 @@ async function generateRealmWithInference(prompt: string): Promise<{ title: stri
 }
 
 function fallbackRealm(prompt: string) {
-  return {
-    title: `${prompt.split(/\s+/).slice(0, 5).join(" ")} Realm`,
-    lore: prompt,
-    assets: [
-      { type: "biome", name: "Anchor Biome", description: `A permanent world space shaped by: ${prompt}` },
-      { type: "npc", name: "Memory Warden", description: "An NPC that recalls clan history from 0G Storage." },
-      { type: "quest", name: "First Echo", description: "A starter quest that proves the realm can evolve." },
-      { type: "artifact", name: "Clan Sigil", description: "A tradable identity artifact bound to the clan iNFT." },
-    ],
-  };
+  return inferPromptRealm(prompt);
 }
 
 function getStorageConfig() {
@@ -180,6 +255,7 @@ export async function POST(req: NextRequest) {
         title: generated.title,
         lore: generated.lore,
         assets: generated.assets,
+        layout: generated.layout,
       });
 
       return NextResponse.json({

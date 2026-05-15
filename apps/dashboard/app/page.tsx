@@ -50,6 +50,14 @@ interface RuntimeIntegration {
   depinBaseUrl: string;
 }
 
+interface OwnedClanSummary {
+  tokenId: string;
+  memoryRootURI: string;
+  realmRootURI: string;
+  voteRootURI: string;
+  realmCount: number;
+}
+
 const tabs: Array<{ id: Tab; label: string }> = [
   { id: "mint", label: "Mint Clan" },
   { id: "realm", label: "UGC Realm" },
@@ -90,8 +98,9 @@ export default function HomePage() {
   const [runtimeIntegration, setRuntimeIntegration] = useState<RuntimeIntegration | null>(null);
   const [depinSummary, setDepinSummary] = useState("");
   const [questOutcome, setQuestOutcome] = useState("");
+  const [ownedClans, setOwnedClans] = useState<OwnedClanSummary[]>([]);
 
-  const loadLatestOwnedClan = async () => {
+  const loadOwnedClans = async () => {
     if (!isConnected || !address || !publicClient || !contractAddress) return null;
 
     const balance = await publicClient.readContract({
@@ -100,32 +109,61 @@ export default function HomePage() {
       functionName: "balanceOf",
       args: [address],
     });
-    if (balance === BigInt(0)) return null;
+    if (balance === BigInt(0)) {
+      setOwnedClans([]);
+      return null;
+    }
 
-    const lastIndex = balance - BigInt(1);
-    const ownedTokenId = await publicClient.readContract({
-      address: contractAddress,
-      abi: agentInftAbi,
-      functionName: "tokenOfOwnerByIndex",
-      args: [address, lastIndex],
-    });
+    const discovered: OwnedClanSummary[] = [];
+    for (let index = 0; index < Number(balance); index++) {
+      const ownedTokenId = await publicClient.readContract({
+        address: contractAddress,
+        abi: agentInftAbi,
+        functionName: "tokenOfOwnerByIndex",
+        args: [address, BigInt(index)],
+      });
 
-    const tid = ownedTokenId.toString();
-    setTokenId(tid);
+      const state = await publicClient.readContract({
+        address: contractAddress,
+        abi: agentInftAbi,
+        functionName: "getClanState",
+        args: [ownedTokenId],
+      });
 
-    const state = await publicClient.readContract({
-      address: contractAddress,
-      abi: agentInftAbi,
-      functionName: "getClanState",
-      args: [ownedTokenId],
-    });
+      discovered.push({
+        tokenId: ownedTokenId.toString(),
+        memoryRootURI: state.memoryRootURI,
+        realmRootURI: state.realmRootURI,
+        voteRootURI: state.voteRootURI,
+        realmCount: Number(state.realmCount),
+      });
+    }
 
-    if (state.memoryRootURI) setMemoryRoot(state.memoryRootURI);
-    if (state.realmRootURI) setRealmRoot(state.realmRootURI);
-    if (state.voteRootURI) setVoteRoot(state.voteRootURI);
-    setRealmCount(Number(state.realmCount));
+    setOwnedClans(discovered);
+    const latest = discovered[discovered.length - 1];
+    if (!latest) return null;
 
-    return tid;
+    setTokenId(latest.tokenId);
+    setMemoryRoot(latest.memoryRootURI);
+    setRealmRoot(latest.realmRootURI);
+    setVoteRoot(latest.voteRootURI);
+    setRealmCount(latest.realmCount);
+
+    return latest.tokenId;
+  };
+
+  const selectOwnedClan = (clan: OwnedClanSummary) => {
+    setTokenId(clan.tokenId);
+    setMemoryRoot(clan.memoryRootURI);
+    setRealmRoot(clan.realmRootURI);
+    setVoteRoot(clan.voteRootURI);
+    setRealmCount(clan.realmCount);
+  };
+
+  const updateOwnedClan = (nextTokenId: string, patch: Partial<OwnedClanSummary>) => {
+    setOwnedClans((current) =>
+      current.map((clan) => (clan.tokenId === nextTokenId ? { ...clan, ...patch } : clan))
+    );
   };
 
   useEffect(() => {
@@ -140,7 +178,7 @@ export default function HomePage() {
     (async () => {
       try {
         if (cancelled) return;
-        await loadLatestOwnedClan();
+        await loadOwnedClans();
       } catch {
         // Contract may not exist on this chain or wallet has no tokens
       }
@@ -269,9 +307,10 @@ export default function HomePage() {
           const mintedTokenId = events[0]?.args.tokenId;
           if (mintedTokenId) {
             setTokenId(mintedTokenId.toString());
+            await loadOwnedClans().catch(() => null);
           }
         } catch {
-          const recoveredTokenId = await loadLatestOwnedClan().catch(() => null);
+          const recoveredTokenId = await loadOwnedClans().catch(() => null);
           if (recoveredTokenId) {
             return {
               kind: "success",
@@ -316,6 +355,7 @@ export default function HomePage() {
 
       setRealmRoot(stored.realmRootURI);
       setRealmCount(stored.realmCount);
+      updateOwnedClan(tokenId, { realmRootURI: stored.realmRootURI, realmCount: stored.realmCount });
       return { kind: "success", message: "Realm root updated on-chain.", txHash: hash };
     });
 
@@ -340,6 +380,7 @@ export default function HomePage() {
       });
 
       setVoteRoot(stored.voteRootURI);
+      updateOwnedClan(tokenId, { voteRootURI: stored.voteRootURI });
       return { kind: "success", message: "Vote root updated on-chain.", txHash: hash };
     });
 
@@ -383,6 +424,11 @@ export default function HomePage() {
       setMemoryRoot(stored.memoryRootURI);
       setRealmRoot(stored.realmRootURI);
       setRealmCount(stored.realmCount);
+      updateOwnedClan(tokenId, {
+        memoryRootURI: stored.memoryRootURI,
+        realmRootURI: stored.realmRootURI,
+        realmCount: stored.realmCount,
+      });
       return { kind: "success", message: "Clan evolution submitted on-chain.", txHash: hash };
     });
 
@@ -533,6 +579,7 @@ export default function HomePage() {
           </div>
 
           <StatusPanel status={status} explorerUrl={explorerUrl} />
+          <OwnedClansPanel clans={ownedClans} activeTokenId={tokenId} onSelect={selectOwnedClan} />
         </aside>
 
         <motion.section
@@ -823,6 +870,44 @@ function StatusPanel({ status, explorerUrl }: { status: Status; explorerUrl: str
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function OwnedClansPanel({
+  clans,
+  activeTokenId,
+  onSelect,
+}: {
+  clans: OwnedClanSummary[];
+  activeTokenId: string;
+  onSelect: (clan: OwnedClanSummary) => void;
+}) {
+  return (
+    <div className="rounded-md border border-white/10 bg-black/25 p-4">
+      <p className="text-sm font-bold text-parchment">Owned Clans</p>
+      {clans.length === 0 ? (
+        <p className="mt-2 text-sm leading-5 text-stone">No clan iNFTs found for the connected wallet.</p>
+      ) : (
+        <div className="mt-3 space-y-2">
+          {clans.map((clan) => (
+            <button
+              key={clan.tokenId}
+              onClick={() => onSelect(clan)}
+              className={`w-full rounded-md border px-3 py-3 text-left transition ${
+                activeTokenId === clan.tokenId
+                  ? "border-gold bg-gold/10"
+                  : "border-white/10 bg-black/20 hover:border-gold/40"
+              }`}
+            >
+              <p className="text-sm font-bold text-parchment">Clan #{clan.tokenId}</p>
+              <p className="mt-1 text-xs text-stone">
+                {clan.realmRootURI ? `${clan.realmCount} playable realm${clan.realmCount === 1 ? "" : "s"}` : "No realm stored yet"}
+              </p>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { agentInftAbi, downloadFromStorage, uploadJSON } from "@0gclawforge/sdk";
 import type { StorageConfig } from "@0gclawforge/sdk";
-import { getAgentInftAddress } from "../../../../lib/contract-addresses";
+import { getAgentInftAddress, getOgRpcUrl } from "../../../../lib/contract-addresses";
 
 interface RealmProgress {
   completed: boolean;
@@ -23,6 +23,7 @@ interface RealmProgress {
 interface SaveProgressBody {
   action: "saveProgress";
   tokenId: string;
+  chainId?: number;
   progress: RealmProgress;
 }
 
@@ -30,8 +31,8 @@ function readPrivateKey(): string | undefined {
   return process.env.PRIVATE_KEY?.trim().split(/\s+/)[0];
 }
 
-function getStorageConfig(requirePrivateKey = false): StorageConfig {
-  const rpcUrl = process.env.VITE_RPC_URL || process.env.NEXT_PUBLIC_OG_RPC_URL;
+function getStorageConfig(chainId: number, requirePrivateKey = false): StorageConfig {
+  const rpcUrl = getOgRpcUrl(chainId);
   const indexerUrl =
     process.env.VITE_STORAGE_INDEXER ||
     process.env.NEXT_PUBLIC_STORAGE_INDEXER ||
@@ -51,9 +52,7 @@ function getStorageConfig(requirePrivateKey = false): StorageConfig {
 
 function getContractConfig(chainId?: string | null) {
   const useMainnet = chainId === "16661";
-  const rpcUrl = useMainnet
-    ? process.env.NEXT_PUBLIC_OG_MAINNET_RPC_URL || process.env.VITE_MAINNET_RPC_URL || "https://evmrpc.0g.ai"
-    : process.env.VITE_RPC_URL || process.env.NEXT_PUBLIC_OG_RPC_URL || "https://evmrpc-testnet.0g.ai";
+  const rpcUrl = getOgRpcUrl(useMainnet ? 16661 : 16602);
   const address = getAgentInftAddress(useMainnet ? 16661 : 16602);
 
   if (!address) {
@@ -90,10 +89,10 @@ function assertTokenId(tokenId: string) {
   }
 }
 
-async function downloadRealmRecord(rootHash: string, tokenId: string) {
+async function downloadRealmRecord(rootHash: string, tokenId: string, chainId: number) {
   const tmpPath = join(tmpdir(), `0gclawforge-realm-${tokenId}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
   try {
-    await downloadFromStorage(rootHash, tmpPath, getStorageConfig(false));
+    await downloadFromStorage(rootHash, tmpPath, getStorageConfig(chainId, false));
     return JSON.parse(await readFile(tmpPath, "utf8"));
   } finally {
     await rm(tmpPath, { force: true });
@@ -105,7 +104,9 @@ export async function GET(req: NextRequest, { params }: { params: { tokenId: str
 
   try {
     assertTokenId(tokenId);
-    const { rpcUrl, address } = getContractConfig(req.nextUrl.searchParams.get("chainId"));
+    const requestedChainId = req.nextUrl.searchParams.get("chainId");
+    const chainId = requestedChainId === "16661" ? 16661 : 16602;
+    const { rpcUrl, address } = getContractConfig(requestedChainId);
     const provider = new ethers.JsonRpcProvider(rpcUrl);
     const contract = new ethers.Contract(address, agentInftAbi, provider);
     const clanState = normalizeClanState(await contract.getClanState(BigInt(tokenId)));
@@ -116,7 +117,7 @@ export async function GET(req: NextRequest, { params }: { params: { tokenId: str
     }
 
     const activeRoot = requestedRealmRoot || clanState.realmRootURI;
-    const realm = await downloadRealmRecord(activeRoot, tokenId);
+    const realm = await downloadRealmRecord(activeRoot, tokenId, chainId);
     const history: Array<{ rootHash: string; title: string; createdAt: number; version: number; current: boolean }> = [];
     const seen = new Set<string>();
     let nextRoot = activeRoot;
@@ -124,7 +125,7 @@ export async function GET(req: NextRequest, { params }: { params: { tokenId: str
 
     while (nextRoot && !seen.has(nextRoot) && depth < 12) {
       seen.add(nextRoot);
-      const record = depth === 0 ? realm : await downloadRealmRecord(nextRoot, tokenId);
+      const record = depth === 0 ? realm : await downloadRealmRecord(nextRoot, tokenId, chainId);
       history.push({
         rootHash: nextRoot,
         title: record?.payload?.title || `Realm Version ${history.length + 1}`,
@@ -150,6 +151,7 @@ export async function POST(req: NextRequest, { params }: { params: { tokenId: st
   try {
     assertTokenId(tokenId);
     const body = (await req.json()) as SaveProgressBody;
+    const chainId = Number(body.chainId || req.nextUrl.searchParams.get("chainId") || process.env.NEXT_PUBLIC_OG_CHAIN_ID || 16602);
 
     if (body.action !== "saveProgress") {
       return NextResponse.json({ error: "Unsupported realm action" }, { status: 400 });
@@ -171,7 +173,7 @@ export async function POST(req: NextRequest, { params }: { params: { tokenId: st
         completedAt: body.progress.completedAt ?? Date.now(),
       },
       network: {
-        chainId: Number(process.env.VITE_CHAIN_ID || process.env.NEXT_PUBLIC_OG_CHAIN_ID || 16602),
+        chainId,
         storageIndexer:
           process.env.VITE_STORAGE_INDEXER ||
           process.env.NEXT_PUBLIC_STORAGE_INDEXER ||
@@ -180,7 +182,7 @@ export async function POST(req: NextRequest, { params }: { params: { tokenId: st
       createdAt: Date.now(),
     };
 
-    const upload = await uploadJSON(record, getStorageConfig(true));
+    const upload = await uploadJSON(record, getStorageConfig(chainId, true));
 
     return NextResponse.json({
       progressRootHash: upload.rootHash,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
-import { getAgentInftAddress, getAgentMarketplaceAddress } from "../../../lib/contract-addresses";
+import { getAgentInftAddress, getAgentMarketplaceAddress, getOgRpcUrl } from "../../../lib/contract-addresses";
 
 const INFT_ABI = [
   "function totalSupply() view returns (uint256)",
@@ -16,11 +16,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ listings: [] });
     }
 
-    const rpcUrl =
-      chainId === 16661
-        ? process.env.NEXT_PUBLIC_OG_MAINNET_RPC_URL || "https://evmrpc.0g.ai"
-        : process.env.NEXT_PUBLIC_OG_RPC_URL || "https://evmrpc-testnet.0g.ai";
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const provider = new ethers.JsonRpcProvider(getOgRpcUrl(chainId));
     const contract = new ethers.Contract(contractAddr, INFT_ABI, provider);
     const marketplaceAddress = getAgentMarketplaceAddress(chainId)?.toLowerCase();
 

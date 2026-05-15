@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { uploadAgentIntelligence, INFTClient } from "@0gclawforge/sdk";
 import { createCipheriv, randomBytes } from "crypto";
-import { getAgentInftAddress } from "../../../lib/contract-addresses";
+import { getAgentInftAddress, getOgRpcUrl } from "../../../lib/contract-addresses";
 
 function encryptBlob(plaintext: string, key: Buffer): string {
   const iv = randomBytes(16);
@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { name, personality, model, capabilities, skills, memorySeed } = body;
+    const chainId = Number(body.chainId || process.env.NEXT_PUBLIC_OG_CHAIN_ID || 16602);
 
     if (!name) {
       return NextResponse.json({ error: "name required" }, { status: 400 });
@@ -26,9 +27,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Server wallet not configured" }, { status: 500 });
     }
 
-    const rpcUrl = process.env.NEXT_PUBLIC_OG_RPC_URL;
+    const rpcUrl = getOgRpcUrl(chainId);
     const indexerUrl = process.env.OG_STORAGE_INDEXER_TURBO;
-    const inftAddress = getAgentInftAddress();
+    const inftAddress = getAgentInftAddress(chainId);
 
     if (!rpcUrl || !indexerUrl) {
       return NextResponse.json({ error: "0G endpoints not configured" }, { status: 500 });

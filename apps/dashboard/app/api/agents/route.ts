@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
-import { getAgentInftAddress } from "../../../lib/contract-addresses";
+import { getAgentInftAddress, getOgRpcUrl } from "../../../lib/contract-addresses";
 
 const INFT_ABI = [
   "function balanceOf(address) view returns (uint256)",
@@ -13,12 +13,13 @@ export async function GET(req: NextRequest) {
   if (!owner) return NextResponse.json({ error: "owner required" }, { status: 400 });
 
   try {
-    const contractAddress = getAgentInftAddress();
+    const chainId = Number(req.nextUrl.searchParams.get("chainId") || process.env.NEXT_PUBLIC_OG_CHAIN_ID || 16602);
+    const contractAddress = getAgentInftAddress(chainId);
     if (!contractAddress) {
       return NextResponse.json({ agents: [] });
     }
 
-    const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_OG_RPC_URL);
+    const provider = new ethers.JsonRpcProvider(getOgRpcUrl(chainId));
     const contract = new ethers.Contract(
       contractAddress,
       INFT_ABI,

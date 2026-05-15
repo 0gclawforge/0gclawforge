@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { NextRequest, NextResponse } from "next/server";
 import { downloadFromStorage, type StorageConfig } from "@0gclawforge/sdk";
+import { getOgRpcUrl } from "../../../lib/contract-addresses";
 
 function readPrivateKey(): string {
   const privateKey = process.env.PRIVATE_KEY?.trim();
@@ -10,8 +11,8 @@ function readPrivateKey(): string {
   return privateKey.split(/\s+/)[0];
 }
 
-function getStorageConfig(): StorageConfig {
-  const rpcUrl = process.env.VITE_RPC_URL || process.env.NEXT_PUBLIC_OG_RPC_URL;
+function getStorageConfig(chainId: number): StorageConfig {
+  const rpcUrl = getOgRpcUrl(chainId);
   const indexerUrl =
     process.env.VITE_STORAGE_INDEXER ||
     process.env.NEXT_PUBLIC_STORAGE_INDEXER ||
@@ -20,10 +21,10 @@ function getStorageConfig(): StorageConfig {
   return { rpcUrl, indexerUrl, privateKey: readPrivateKey() };
 }
 
-async function downloadRecord(rootHash: string) {
+async function downloadRecord(rootHash: string, chainId: number) {
   const tmpPath = join(tmpdir(), `0gclawforge-vote-${rootHash.slice(0, 12)}-${Date.now()}.json`);
   try {
-    await downloadFromStorage(rootHash, tmpPath, getStorageConfig());
+    await downloadFromStorage(rootHash, tmpPath, getStorageConfig(chainId));
     return JSON.parse(await readFile(tmpPath, "utf8"));
   } finally {
     await rm(tmpPath, { force: true });
@@ -33,6 +34,7 @@ async function downloadRecord(rootHash: string) {
 export async function GET(req: NextRequest) {
   try {
     const voteRoot = req.nextUrl.searchParams.get("voteRoot");
+    const chainId = Number(req.nextUrl.searchParams.get("chainId") || process.env.NEXT_PUBLIC_OG_CHAIN_ID || 16602);
     if (!voteRoot?.trim()) {
       return NextResponse.json({ error: "voteRoot query parameter is required." }, { status: 400 });
     }
@@ -50,7 +52,7 @@ export async function GET(req: NextRequest) {
 
     while (currentRoot && records.length < maxDepth) {
       try {
-        const record = await downloadRecord(currentRoot);
+        const record = await downloadRecord(currentRoot, chainId);
         const payload = record.payload || record;
         records.push({
           rootHash: currentRoot,

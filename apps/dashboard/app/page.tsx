@@ -112,7 +112,7 @@ export default function HomePage() {
     if (!voteRoot) return;
     setVotesLoading(true);
     try {
-      const res = await fetch(`/api/votes?voteRoot=${encodeURIComponent(voteRoot)}`);
+      const res = await fetch(`/api/votes?voteRoot=${encodeURIComponent(voteRoot)}&chainId=${chainId}`);
       const data = await res.json();
       if (data.votes) setVoteHistory(data.votes);
     } catch {
@@ -222,7 +222,7 @@ export default function HomePage() {
     const response = await fetch("/api/clans", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, chainId }),
     });
     const payload = (await response.json()) as T & { error?: string };
     if (!response.ok) {

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useChainId } from "wagmi";
 
 const CAPABILITIES = [
   "Research", "Trading", "Writing", "Analysis", "Coding", "Scheduling", "Data", "Security",
@@ -10,6 +11,7 @@ const MODELS = ["claude-sonnet-4", "gemma-3-27b", "llama-3-70b", "custom"];
 const STEPS = ["Identity", "Intelligence", "Mint", "Success"] as const;
 
 export default function ForgePage() {
+  const chainId = useChainId();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
     name: "",
@@ -41,7 +43,7 @@ export default function ForgePage() {
       const res = await fetch("/api/forge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, chainId }),
       });
       const data = await res.json();
       setMintState("hashing");

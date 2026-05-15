@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { uploadJSON, ZGComputeClient } from "@0gclawforge/sdk";
+import { getOgRpcUrl } from "../../../lib/contract-addresses";
 
 interface ClanApiBody {
   action: "prepareMint" | "storeRealm" | "storeVote" | "storeEvolution" | "recordMemoryEntry";
@@ -18,6 +19,7 @@ interface ClanApiBody {
   previousVoteRoot?: string;
   executor?: string;
   entry?: string;
+  chainId?: number;
 }
 
 type RealmLayout = {
@@ -72,8 +74,8 @@ function readPrivateKey(): string {
   return privateKey.split(/\s+/)[0];
 }
 
-function getComputeConfig() {
-  const rpcUrl = process.env.VITE_RPC_URL || process.env.NEXT_PUBLIC_OG_RPC_URL;
+function getComputeConfig(chainId: number) {
+  const rpcUrl = getOgRpcUrl(chainId);
   const providerAddress = process.env.OG_COMPUTE_PROVIDER_ADDR;
   if (!rpcUrl || !providerAddress) return null;
   return { rpcUrl, privateKey: readPrivateKey(), providerAddress };
@@ -234,8 +236,8 @@ function inferPromptRealm(prompt: string): GeneratedRealm {
   };
 }
 
-async function generateRealmWithInference(prompt: string): Promise<GeneratedRealm> {
-  const computeConfig = getComputeConfig();
+async function generateRealmWithInference(prompt: string, chainId: number): Promise<GeneratedRealm> {
+  const computeConfig = getComputeConfig(chainId);
   if (!computeConfig) {
     return fallbackRealm(prompt);
   }
@@ -315,8 +317,8 @@ function fallbackRealm(prompt: string) {
   return inferPromptRealm(prompt);
 }
 
-function getStorageConfig() {
-  const rpcUrl = process.env.VITE_RPC_URL || process.env.NEXT_PUBLIC_OG_RPC_URL;
+function getStorageConfig(chainId: number) {
+  const rpcUrl = getOgRpcUrl(chainId);
   const indexerUrl =
     process.env.VITE_STORAGE_INDEXER ||
     process.env.NEXT_PUBLIC_STORAGE_INDEXER ||
@@ -333,12 +335,12 @@ function getStorageConfig() {
   };
 }
 
-async function storeRecord(kind: string, payload: Record<string, unknown>) {
+async function storeRecord(kind: string, payload: Record<string, unknown>, chainId: number) {
   const record = {
     kind,
     payload,
     network: {
-      chainId: Number(process.env.VITE_CHAIN_ID || process.env.NEXT_PUBLIC_OG_CHAIN_ID || 16602),
+      chainId,
       storageIndexer:
         process.env.VITE_STORAGE_INDEXER ||
         process.env.NEXT_PUBLIC_STORAGE_INDEXER ||
@@ -347,7 +349,7 @@ async function storeRecord(kind: string, payload: Record<string, unknown>) {
     createdAt: Date.now(),
   };
 
-  const upload = await uploadJSON(record, getStorageConfig());
+  const upload = await uploadJSON(record, getStorageConfig(chainId));
   const metadataHash = ethers.keccak256(ethers.toUtf8Bytes(JSON.stringify(record)));
 
   return {
@@ -362,6 +364,7 @@ async function storeRecord(kind: string, payload: Record<string, unknown>) {
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as ClanApiBody;
+    const chainId = Number(body.chainId || process.env.NEXT_PUBLIC_OG_CHAIN_ID || 16602);
 
     if (body.action === "prepareMint") {
       if (!body.clanName || !body.archetype || !body.owner) {
@@ -378,7 +381,7 @@ export async function POST(req: NextRequest) {
             importance: 1,
           },
         ],
-      });
+      }, chainId);
 
       const metadata = await storeRecord("clan-metadata", {
         clanName: body.clanName,
@@ -387,7 +390,7 @@ export async function POST(req: NextRequest) {
         owner: body.owner,
         memoryRootURI: memory.storageURI,
         realmRootURI: "",
-      });
+      }, chainId);
 
       return NextResponse.json({
         storageURI: metadata.storageURI,
@@ -403,7 +406,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "tokenId and prompt are required" }, { status: 400 });
       }
 
-      const generated = await generateRealmWithInference(body.prompt);
+      const generated = await generateRealmWithInference(body.prompt, chainId);
       const realm = await storeRecord("ugc-realm", {
         tokenId: body.tokenId,
         prompt: body.prompt,
@@ -415,7 +418,7 @@ export async function POST(req: NextRequest) {
         visualTheme: generated.visualTheme,
         map: generated.map,
         layout: generated.layout,
-      });
+      }, chainId);
 
       return NextResponse.json({
         realmRootURI: realm.storageURI,
@@ -435,7 +438,7 @@ export async function POST(req: NextRequest) {
         yesVotes: body.yesVotes ?? 1,
         noVotes: body.noVotes ?? 0,
         ...(body.previousVoteRoot ? { previousVoteRoot: body.previousVoteRoot } : {}),
-      });
+      }, chainId);
 
       return NextResponse.json({
         voteRootURI: vote.storageURI,
@@ -449,14 +452,14 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "tokenId and proposal are required" }, { status: 400 });
       }
 
-      const generated = body.prompt ? await generateRealmWithInference(body.prompt) : null;
+      const generated = body.prompt ? await generateRealmWithInference(body.prompt, chainId) : null;
       const evolution = await storeRecord("clan-evolution", {
         tokenId: body.tokenId,
         proposal: body.proposal,
         prompt: body.prompt,
         realmGenerated: generated,
         executedBy: body.executor || "unknown",
-      });
+      }, chainId);
 
       return NextResponse.json({
         metadataHash: evolution.metadataHash,
@@ -480,7 +483,7 @@ export async function POST(req: NextRequest) {
         tags: ["realm", "completion", "gameplay"],
         importance: 1,
         executor: body.executor || "unknown",
-      });
+      }, chainId);
 
       return NextResponse.json({
         memoryRootURI: memory.storageURI,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -47,6 +47,9 @@ import type {
 const MAP_SIZE = 16;
 const PLAYER_SPAWN = { x: 8, y: 14 };
 const EMPTY_TILE: Tile = { type: "floor", icon: "", passable: true };
+const AUTONOMOUS_MODEL_NAME = "0GM-1.0-35B-A3B";
+const AUTO_WORLD_INTERVAL_MS = 7_000;
+const AUTO_DIRECTIVE_INTERVAL_MS = 35_000;
 
 const themes: Record<BiomeTheme["id"], BiomeTheme> = {
   forest: {
@@ -373,6 +376,40 @@ function placeExit(grid: Tile[][]) {
   return updateTile(grid, 7, 1, exit);
 }
 
+function cloneGrid(grid: Tile[][]) {
+  return grid.map((row) => row.map((tile) => ({ ...tile })));
+}
+
+function findTilePositions(grid: Tile[][], predicate: (tile: Tile, x: number, y: number) => boolean) {
+  const positions: Array<{ x: number; y: number; tile: Tile }> = [];
+  for (let y = 1; y < grid.length - 1; y++) {
+    for (let x = 1; x < grid[y].length - 1; x++) {
+      const tile = grid[y][x];
+      if (predicate(tile, x, y)) positions.push({ x, y, tile });
+    }
+  }
+  return positions;
+}
+
+function pickOne<T>(items: T[]) {
+  if (items.length === 0) return null;
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+function canAutonomyOccupy(tile: Tile) {
+  return tile.type === "floor" || tile.type === "decoration";
+}
+
+function autonomousQuestAsset(realm: RealmPayload, theme: BiomeTheme, index: number): RealmAsset {
+  const names = ["Signal Patrol", "Memory Relay", "Border Rite", "Artifact Census", "Warden Errand"];
+  const name = `${theme.name} ${names[index % names.length]} ${index + 1}`;
+  return {
+    type: "quest",
+    name,
+    description: `${AUTONOMOUS_MODEL_NAME} issued a small live objective for ${realm.title}. Watch the clan complete it without taking over your player.`,
+  };
+}
+
 export function GameEngine({ tokenId }: { tokenId: string }) {
   const searchParams = useSearchParams();
   const forcedSpectator = searchParams.get("spectator") === "1";
@@ -422,6 +459,14 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
   const [chatLoading, setChatLoading] = useState(false);
   const [autoMode, setAutoMode] = useState(false);
   const [autoLog, setAutoLog] = useState<string[]>([]);
+  const [autoPulse, setAutoPulse] = useState("Idle");
+  const autoTickRef = useRef(0);
+  const gridRef = useRef<Tile[][] | null>(null);
+  const gameStateRef = useRef<GameState | null>(null);
+  const realmPayloadRef = useRef<RealmPayload | null>(null);
+  const themeRef = useRef<BiomeTheme>(themes.default);
+  const completedRef = useRef(false);
+  const autoPulseRef = useRef("Idle");
 
   const clanState = normalizeClanState(chainStateData) ?? apiClanState;
   const realmPayload = realm?.payload ?? null;
@@ -430,6 +475,30 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
     address && ownerAddress && String(ownerAddress).toLowerCase() === address.toLowerCase()
   );
   const canPersist = isConnected && isOwner && !forcedSpectator;
+
+  useEffect(() => {
+    gridRef.current = grid;
+  }, [grid]);
+
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+
+  useEffect(() => {
+    realmPayloadRef.current = realmPayload;
+  }, [realmPayload]);
+
+  useEffect(() => {
+    themeRef.current = theme;
+  }, [theme]);
+
+  useEffect(() => {
+    completedRef.current = completed;
+  }, [completed]);
+
+  useEffect(() => {
+    autoPulseRef.current = autoPulse;
+  }, [autoPulse]);
 
   useEffect(() => {
     let cancelled = false;
@@ -489,6 +558,12 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
 
   const addLog = useCallback((message: string | string[]) => {
     setGameState((state) => (state ? { ...state, gameLog: appendLog(state.gameLog, message) } : state));
+  }, []);
+
+  const pushAutoLog = useCallback((message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setAutoLog((prev) => [...prev.slice(-11), `[${timestamp}] ${message}`]);
+    setAutoPulse(message);
   }, []);
 
   const replaceTile = useCallback((x: number, y: number, tile: Tile) => {
@@ -715,6 +790,109 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
     setModal({ type: "boss", result: `${hit ? `${damage} damage dealt.` : "Attack missed."} Boss countered for ${bossDamage}.` });
   };
 
+  const runAutonomousWorldAction = useCallback(() => {
+    const currentGrid = gridRef.current;
+    const currentGameState = gameStateRef.current;
+    const currentRealm = realmPayloadRef.current;
+    const currentTheme = themeRef.current;
+    if (!currentGrid || !currentGameState || !currentRealm || completedRef.current) return;
+
+    autoTickRef.current += 1;
+    const nextGrid = cloneGrid(currentGrid);
+    const player = currentGameState.playerPos;
+    const autonomousQuestPositions = findTilePositions(
+      nextGrid,
+      (tile) => tile.type === "quest" && Boolean(tile.asset?.description.includes(AUTONOMOUS_MODEL_NAME))
+    );
+    const roll = Math.random();
+
+    if (autonomousQuestPositions.length > 0 && roll < 0.35) {
+      const quest = pickOne(autonomousQuestPositions);
+      if (!quest?.tile.asset) return;
+
+      nextGrid[quest.y][quest.x] = { ...EMPTY_TILE };
+      gridRef.current = nextGrid;
+      setGrid(nextGrid);
+      setGameState((state) => {
+        if (!state || state.questsCompleted.includes(quest.tile.asset!.name)) return state;
+        return applyRewards(
+          { ...state, questsCompleted: [...state.questsCompleted, quest.tile.asset!.name] },
+          12,
+          6,
+          [`Autonomous clan completed "${quest.tile.asset!.name}" while you watched.`]
+        );
+      });
+      pushAutoLog(`Completed micro-quest: ${quest.tile.asset.name}`);
+      return;
+    }
+
+    if (roll < 0.58) {
+      const npcs = findTilePositions(nextGrid, (tile) => tile.type === "npc");
+      const npc = pickOne(npcs);
+      if (npc) {
+        const directions = [
+          { x: 0, y: -1 },
+          { x: 1, y: 0 },
+          { x: 0, y: 1 },
+          { x: -1, y: 0 },
+        ].sort(() => Math.random() - 0.5);
+        const step = directions.find((direction) => {
+          const x = npc.x + direction.x;
+          const y = npc.y + direction.y;
+          const target = nextGrid[y]?.[x];
+          return target && canAutonomyOccupy(target) && !(player.x === x && player.y === y);
+        });
+
+        if (step) {
+          const x = npc.x + step.x;
+          const y = npc.y + step.y;
+          const name = npc.tile.asset?.name || "Realm NPC";
+          nextGrid[npc.y][npc.x] = { ...EMPTY_TILE };
+          nextGrid[y][x] = npc.tile;
+          gridRef.current = nextGrid;
+          setGrid(nextGrid);
+          const message = `${name} patrols to (${x}, ${y}).`;
+          addLog(message);
+          pushAutoLog(message);
+          return;
+        }
+      }
+    }
+
+    if (roll < 0.82) {
+      const openTiles = findTilePositions(
+        nextGrid,
+        (tile, x, y) => canAutonomyOccupy(tile) && !(player.x === x && player.y === y)
+      );
+      const target = pickOne(openTiles);
+      if (target) {
+        const asset = autonomousQuestAsset(currentRealm, currentTheme, autoTickRef.current);
+        nextGrid[target.y][target.x] = { type: "quest", icon: "⭐", passable: true, asset };
+        gridRef.current = nextGrid;
+        setGrid(nextGrid);
+        const message = `${AUTONOMOUS_MODEL_NAME} spawned "${asset.name}" at (${target.x}, ${target.y}).`;
+        addLog(message);
+        pushAutoLog(`Spawned micro-quest: ${asset.name}`);
+        return;
+      }
+    }
+
+    const mutableTiles = findTilePositions(
+      nextGrid,
+      (tile, x, y) => canAutonomyOccupy(tile) && !(player.x === x && player.y === y)
+    );
+    const target = pickOne(mutableTiles);
+    if (!target) return;
+    const decorationPool = currentTheme.decorationIcons.length > 0 ? currentTheme.decorationIcons : ["✦"];
+    const icon = decorationPool[autoTickRef.current % decorationPool.length] || "✦";
+    nextGrid[target.y][target.x] = { type: "decoration", icon, passable: true };
+    gridRef.current = nextGrid;
+    setGrid(nextGrid);
+    const message = `The clan reshaped a ${currentTheme.name.toLowerCase()} tile at (${target.x}, ${target.y}).`;
+    addLog(message);
+    pushAutoLog(message);
+  }, [addLog, pushAutoLog]);
+
   const saveProgress = async (markCompleted: boolean) => {
     if (!gameState || !realmPayload || !address || !contractAddress || tokenIdBig === undefined) return;
     if (!canPersist) {
@@ -739,10 +917,10 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
     };
 
     try {
-      const response = await fetch(`/api/realm/${tokenId}`, {
+      const response = await fetch(`/api/realm/${tokenId}?chainId=${chainId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "saveProgress", tokenId, progress }),
+        body: JSON.stringify({ action: "saveProgress", tokenId, chainId, progress }),
       });
       const payload = (await response.json()) as { progressRootHash?: string; storageTxHash?: string; error?: string };
       if (!response.ok || !payload.progressRootHash) throw new Error(payload.error || "Progress upload failed");
@@ -775,6 +953,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
           body: JSON.stringify({
             action: "recordMemoryEntry",
             tokenId,
+            chainId,
             entry: `REALM COMPLETED: ${realmPayload.title}. XP: ${gameState.xp}, Gold: ${gameState.gold}, Boss defeated: ${gameState.bossDefeated ? "yes" : "no"}.`,
             executor: address,
           }),
@@ -821,42 +1000,45 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
     }
   };
 
-  // Autonomous clan cycle
+  // Autonomous clan world actions
+  useEffect(() => {
+    if (!autoMode || !gameState || !realmPayload) return;
+
+    pushAutoLog("Autonomous clan is now moving NPCs and reshaping the realm.");
+    const interval = setInterval(runAutonomousWorldAction, AUTO_WORLD_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [autoMode, gameState?.bossDefeated, realmPayload?.title, pushAutoLog, runAutonomousWorldAction]);
+
+  // 0GM-style advisory directive. World actions continue even if compute is unavailable.
   useEffect(() => {
     if (!autoMode || !gameState || !realmPayload) return;
 
     const runAutoCycle = async () => {
-      const actions = [
-        `Scouting the realm "${realmPayload.title}"...`,
-        `Analyzing ${realmPayload.assets.length} realm assets for threats...`,
-        `Checking quest progress: ${gameState.questsCompleted.length} completed.`,
-      ];
-      const action = actions[Math.floor(Math.random() * actions.length)];
-      setAutoLog((prev) => [...prev.slice(-9), `[${new Date().toLocaleTimeString()}] ${action}`]);
+      pushAutoLog(`${AUTONOMOUS_MODEL_NAME} is planning the next clan directive...`);
 
       try {
         const response = await fetch(`/api/realm/${tokenId}/chat?chainId=${chainId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            message: "As the autonomous clan advisor, give a brief strategic update on what the clan should focus on next. Consider current HP, quest progress, and boss status.",
-            stateSummary: `HP ${gameState.hp}/${gameState.maxHp}, Level ${gameState.level}, Gold ${gameState.gold}, Boss defeated: ${gameState.bossDefeated ? "yes" : "no"}, Quests done: ${gameState.questsCompleted.length}/${realmPayload.assets.filter((a) => a.type === "quest").length}`,
+            message: `Act as ${AUTONOMOUS_MODEL_NAME}, the clan's autonomous world director. Give one concise directive for NPC movement, micro-quest creation, or terrain change. Do not ask for wallet signatures.`,
+            stateSummary: `Autonomous mode active. HP ${gameState.hp}/${gameState.maxHp}, Level ${gameState.level}, Gold ${gameState.gold}, Boss defeated: ${gameState.bossDefeated ? "yes" : "no"}, Quests done: ${gameState.questsCompleted.length}/${realmPayload.assets.filter((a) => a.type === "quest").length}, Current auto pulse: ${autoPulseRef.current}`,
             recentLog: gameState.gameLog.slice(-3),
           }),
         });
         const payload = (await response.json()) as { reply?: string; error?: string };
         const update = payload.reply || payload.error || "No update available.";
-        setAutoLog((prev) => [...prev.slice(-9), `[${new Date().toLocaleTimeString()}] Advisor: ${update}`]);
-        addLog(`Clan Advisor: ${update}`);
+        pushAutoLog(`Directive: ${update}`);
+        addLog(`Autonomous directive: ${update}`);
       } catch {
-        setAutoLog((prev) => [...prev.slice(-9), `[${new Date().toLocaleTimeString()}] Compute unreachable.`]);
+        pushAutoLog(`${AUTONOMOUS_MODEL_NAME} directive unavailable; local clan instincts continue.`);
       }
     };
 
     void runAutoCycle();
-    const interval = setInterval(() => void runAutoCycle(), 45_000);
+    const interval = setInterval(() => void runAutoCycle(), AUTO_DIRECTIVE_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [autoMode, gameState?.bossDefeated, gameState?.questsCompleted.length]);
+  }, [addLog, autoMode, chainId, gameState?.bossDefeated, gameState?.questsCompleted.length, realmPayload?.title, pushAutoLog, tokenId]);
 
   if (loading) {
     return (
@@ -1093,9 +1275,11 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
             <Panel title="Autonomous Clan" icon={Bot}>
               <p className="text-sm leading-6 text-stone">
                 {autoMode
-                  ? "The clan advisor is running autonomously, providing strategic updates every 45 seconds via 0G Compute."
-                  : "Enable autonomous mode to let the clan AI analyze your realm and provide periodic strategic guidance."}
+                  ? "The clan is acting on its own: NPCs patrol, micro-quests resolve, and realm tiles shift while 0G Compute supplies periodic direction."
+                  : "Let the clan act without taking over your player. World changes run locally with 0G Compute directives when available."}
               </p>
+              <StateRow label="Model" value={AUTONOMOUS_MODEL_NAME} />
+              <StateRow label="Pulse" value={autoPulse} />
               <button
                 onClick={() => setAutoMode((prev) => !prev)}
                 className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold ${
@@ -1105,7 +1289,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
                 }`}
               >
                 {autoMode ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                {autoMode ? "Stop Autonomous Mode" : "Start Autonomous Mode"}
+                {autoMode ? "Stop Clan Autonomy" : "Let Clan Act Autonomously"}
               </button>
               {autoLog.length > 0 && (
                 <div className="fantasy-scrollbar max-h-40 space-y-1 overflow-y-auto pr-2 font-mono text-xs leading-5 text-stone">

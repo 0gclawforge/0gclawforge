@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { useAccount, useWriteContract, usePublicClient } from "wagmi";
+import { useAccount, useWriteContract, usePublicClient, useChainId } from "wagmi";
 import { parseEther, type Address } from "viem";
+import { getAgentMarketplaceAddress } from "../../lib/contract-addresses";
 
 interface ClanListing {
   tokenId: number;
@@ -52,6 +53,7 @@ const marketplaceAbi = [
 
 export default function MarketplacePage() {
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
   const [listings, setListings] = useState<ClanListing[]>([]);
@@ -60,17 +62,17 @@ export default function MarketplacePage() {
   const [buying, setBuying] = useState<number | null>(null);
   const [status, setStatus] = useState("");
 
-  const marketplaceAddress = process.env.NEXT_PUBLIC_AGENT_MARKETPLACE_ADDRESS as Address | undefined;
+  const marketplaceAddress = getAgentMarketplaceAddress(chainId) as Address | undefined;
 
   useEffect(() => {
-    fetch("/api/marketplace")
+    fetch(`/api/marketplace?chainId=${chainId}`)
       .then((r) => r.json())
       .then((data) => {
         setListings(data.listings || []);
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, []);
+  }, [chainId]);
 
   const buyClan = async (listing: ClanListing) => {
     if (!isConnected || !address) {

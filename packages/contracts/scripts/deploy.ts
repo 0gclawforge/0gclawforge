@@ -4,10 +4,12 @@ import * as fs from "fs";
 async function main() {
   const [deployer] = await ethers.getSigners();
   const network = await ethers.provider.getNetwork();
-  const explorer =
-    process.env.VITE_EXPLORER_URL ||
-    process.env.NEXT_PUBLIC_OG_EXPLORER ||
-    (network.chainId === 16661n ? "https://chainscan.0g.ai" : "https://chainscan-galileo.0g.ai");
+  const isMainnet = network.chainId === 16661n;
+  const explorer = isMainnet
+    ? process.env.MAINNET_EXPLORER_URL || process.env.NEXT_PUBLIC_OG_MAINNET_EXPLORER || "https://chainscan.0g.ai"
+    : process.env.VITE_EXPLORER_URL ||
+      process.env.NEXT_PUBLIC_OG_EXPLORER ||
+      "https://chainscan-galileo.0g.ai";
 
   console.log("Deploying to 0G Chain with:", deployer.address);
   console.log(
@@ -45,7 +47,14 @@ async function main() {
   console.log("AgentMarketplace:", await marketplace.getAddress());
 
   // 5. Write addresses
-  const addresses = {
+  const addresses = isMainnet ? {
+    NEXT_PUBLIC_MOCK_ORACLE_MAINNET_ADDRESS: await oracle.getAddress(),
+    NEXT_PUBLIC_AGENT_INFT_MAINNET_ADDRESS: await inft.getAddress(),
+    NEXT_PUBLIC_AGENT_REGISTRY_MAINNET_ADDRESS: await registry.getAddress(),
+    NEXT_PUBLIC_AGENT_MARKETPLACE_MAINNET_ADDRESS: await marketplace.getAddress(),
+    DEPLOYED_AT: new Date().toISOString(),
+    CHAIN_ID: network.chainId.toString(),
+  } : {
     NEXT_PUBLIC_MOCK_ORACLE_ADDRESS: await oracle.getAddress(),
     NEXT_PUBLIC_AGENT_INFT_ADDRESS: await inft.getAddress(),
     NEXT_PUBLIC_AGENT_REGISTRY_ADDRESS: await registry.getAddress(),

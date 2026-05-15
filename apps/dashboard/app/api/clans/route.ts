@@ -15,6 +15,7 @@ interface ClanApiBody {
   noVotes?: number;
   currentRealmCount?: number;
   currentRealmRootURI?: string;
+  previousVoteRoot?: string;
   executor?: string;
   entry?: string;
 }
@@ -433,6 +434,7 @@ export async function POST(req: NextRequest) {
         proposal: body.proposal,
         yesVotes: body.yesVotes ?? 1,
         noVotes: body.noVotes ?? 0,
+        ...(body.previousVoteRoot ? { previousVoteRoot: body.previousVoteRoot } : {}),
       });
 
       return NextResponse.json({

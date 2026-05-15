@@ -99,6 +99,28 @@ export default function HomePage() {
   const [depinSummary, setDepinSummary] = useState("");
   const [questOutcome, setQuestOutcome] = useState("");
   const [ownedClans, setOwnedClans] = useState<OwnedClanSummary[]>([]);
+  const [voteHistory, setVoteHistory] = useState<Array<{
+    rootHash: string;
+    proposal: string;
+    yesVotes: number;
+    noVotes: number;
+    createdAt: number;
+  }>>([]);
+  const [votesLoading, setVotesLoading] = useState(false);
+
+  const loadVoteHistory = async () => {
+    if (!voteRoot) return;
+    setVotesLoading(true);
+    try {
+      const res = await fetch(`/api/votes?voteRoot=${encodeURIComponent(voteRoot)}`);
+      const data = await res.json();
+      if (data.votes) setVoteHistory(data.votes);
+    } catch {
+      setVoteHistory([]);
+    } finally {
+      setVotesLoading(false);
+    }
+  };
 
   const loadOwnedClans = async () => {
     if (!isConnected || !address || !publicClient || !contractAddress) return null;
@@ -396,6 +418,7 @@ export default function HomePage() {
         proposal,
         yesVotes: 1,
         noVotes: 0,
+        ...(voteRoot ? { previousVoteRoot: voteRoot } : {}),
       });
 
       setStatus({ kind: "working", message: "Waiting for wallet signature to update vote root..." });
@@ -644,6 +667,10 @@ export default function HomePage() {
               storeRealm={storeRealm}
               regenerateRealm={regenerateRealm}
               storeVote={storeVote}
+              voteHistory={voteHistory}
+              votesLoading={votesLoading}
+              loadVoteHistory={loadVoteHistory}
+              voteRoot={voteRoot}
               executeEvolution={executeEvolution}
               listClan={listClan}
               delistClan={delistClan}
@@ -705,6 +732,10 @@ function Workspace(props: {
   storeRealm: () => void;
   regenerateRealm: () => void;
   storeVote: () => void;
+  voteHistory: Array<{ rootHash: string; proposal: string; yesVotes: number; noVotes: number; createdAt: number }>;
+  votesLoading: boolean;
+  loadVoteHistory: () => void;
+  voteRoot: string;
   executeEvolution: () => void;
   listClan: () => void;
   delistClan: () => void;
@@ -771,11 +802,81 @@ function Workspace(props: {
 
   if (props.activeTab === "governance") {
     return (
-      <Panel title="Community Vote Root" icon={Vote}>
-        <TextInput label="Clan token ID" value={props.tokenId} onChange={props.setTokenId} />
-        <TextArea label="Evolution proposal" value={props.proposal} onChange={props.setProposal} />
-        <ActionButton onClick={props.storeVote} busy={props.busy} label="Store vote and update root" />
-      </Panel>
+      <div className="space-y-6">
+        <Panel title="Community Vote Root" icon={Vote}>
+          <TextInput label="Clan token ID" value={props.tokenId} onChange={props.setTokenId} />
+          <TextArea label="Evolution proposal" value={props.proposal} onChange={props.setProposal} />
+          <ActionButton onClick={props.storeVote} busy={props.busy} label="Store vote and update root" />
+        </Panel>
+
+        <Panel title="Vote History" icon={Gavel}>
+          {props.voteRoot ? (
+            <>
+              <button
+                onClick={props.loadVoteHistory}
+                disabled={props.votesLoading}
+                className="inline-flex items-center gap-2 rounded-md border border-gold/40 px-4 py-2.5 text-sm font-bold text-gold transition hover:bg-gold hover:text-obsidian disabled:opacity-60"
+              >
+                {props.votesLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading from 0G Storage...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4" />
+                    Load vote history
+                  </>
+                )}
+              </button>
+
+              {props.voteHistory.length > 0 && (
+                <div className="mt-4 space-y-3">
+                  <p className="text-xs font-bold uppercase tracking-wider text-stone">
+                    {props.voteHistory.length} proposal{props.voteHistory.length === 1 ? "" : "s"} found
+                  </p>
+                  {props.voteHistory.map((vote, i) => (
+                    <div
+                      key={vote.rootHash}
+                      className="rounded-md border border-white/10 bg-black/25 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-parchment">
+                            #{props.voteHistory.length - i}: {vote.proposal}
+                          </p>
+                          <div className="mt-2 flex items-center gap-4">
+                            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-moss">
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              {vote.yesVotes} Yes
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-red-400">
+                              {vote.noVotes} No
+                            </span>
+                            <span className={`text-xs font-bold ${vote.yesVotes >= vote.noVotes ? "text-gold" : "text-stone"}`}>
+                              {vote.yesVotes >= vote.noVotes ? "Passing" : "Rejected"}
+                            </span>
+                          </div>
+                          {vote.createdAt > 0 && (
+                            <p className="mt-1.5 text-xs text-stone">
+                              {new Date(vote.createdAt).toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <p className="mt-2 truncate text-xs text-stone/60" title={vote.rootHash}>
+                        0G Storage: {vote.rootHash.slice(0, 16)}...{vote.rootHash.slice(-8)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-stone">No vote root on-chain yet. Submit a proposal above to get started.</p>
+          )}
+        </Panel>
+      </div>
     );
   }
 

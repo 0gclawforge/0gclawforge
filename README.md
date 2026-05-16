@@ -247,6 +247,11 @@ pnpm deploy:testnet     # Deploy contracts to 0G Galileo
 pnpm deploy:mainnet     # Deploy contracts to 0G Mainnet
 ```
 
+## Team
+
+- [@Marisdigitals11](https://x.com/Marisdigitals11)
+- [@jennyoliver57](https://x.com/jennyoliver57)
+
 ## License
 
 MIT

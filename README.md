@@ -2,7 +2,7 @@
 
 0GClawForge is a sovereign agent OS built on the 0G ecosystem. It lets users mint, orchestrate, own (as ERC-7857 iNFTs), persist, and evolve multi-agent civilizations that run verifiable TEE inference via 0G Compute, store long-term memory forever on 0G Storage, and execute autonomous on-chain actions with zero context loss. Eternal Clans is the flagship application: tradable AI civilizations where players co-create UGC realms, govern evolution through community votes, coordinate DePIN data, and deploy live chat agents — all in one living, self-evolving digital nation.
 
-**Live:** [https://0gclawforge.duckdns.org](https://0gclawforge.duckdns.org)
+**Live:** [https://0gclawforge.xyz](https://0gclawforge.xyz)
 
 ## Features
 

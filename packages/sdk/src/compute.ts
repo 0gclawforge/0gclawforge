@@ -143,6 +143,7 @@ export class ZGComputeClient {
       messages,
       max_tokens: options.maxTokens ?? 1024,
       temperature: options.temperature ?? 0.7,
+      enable_thinking: false,
     };
   }
 
@@ -188,7 +189,15 @@ export class ZGComputeClient {
           usage?: unknown;
         };
         const msg = completion.choices?.[0]?.message;
-        const text = msg?.content ?? msg?.reasoning_content ?? "";
+        let text = msg?.content ?? "";
+        if (!text && msg?.reasoning_content) {
+          // Reasoning models may put output in reasoning_content. Extract the
+          // final drafted reply by taking text after the last "Refined draft:"
+          // or similar marker, falling back to the last paragraph.
+          const rc = msg.reasoning_content;
+          const draftMatch = rc.match(/(?:Refined draft|Final draft|Draft):\s*\n([\s\S]+?)$/i);
+          text = draftMatch ? draftMatch[1].trim() : rc.split("\n\n").filter(Boolean).pop()?.trim() ?? rc;
+        }
         const chatId = response.headers.get("ZG-Res-Key") || completion.id;
         let verified = true;
 

@@ -148,7 +148,7 @@ Respond as the Clan Advisor using ${AUTONOMOUS_MODEL_NAME} sovereign-agent style
         systemPrompt:
           `You are a Clan Advisor AI for an Eternal Clans realm game running on 0G infrastructure. Act like ${AUTONOMOUS_MODEL_NAME}: strong at agentic tool-use planning, world-state reasoning, and concise direction. You have access to the realm state and player progress. Stay brief and actionable. Use plain text only.`,
         temperature: 0.6,
-        maxTokens: 200,
+        maxTokens: 1024,
       }
     );
 

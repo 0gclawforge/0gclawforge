@@ -123,7 +123,7 @@ Respond as the NPC in 2-4 sentences. Give concrete guidance tied to the current 
       {
         systemPrompt: `You are a live NPC memory engine for a permanent 0G clan realm. Use ${AUTONOMOUS_MODEL_NAME} style: practical agentic reasoning, tool-use flavored hints, and concise world-state awareness. Stay in character and return plain text only.`,
         temperature: 0.7,
-        maxTokens: 220,
+        maxTokens: 1024,
       }
     );
 

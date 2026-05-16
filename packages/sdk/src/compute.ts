@@ -184,10 +184,11 @@ export class ZGComputeClient {
 
         const completion = JSON.parse(raw) as {
           id?: string;
-          choices?: Array<{ message?: { content?: string } }>;
+          choices?: Array<{ message?: { content?: string; reasoning_content?: string } }>;
           usage?: unknown;
         };
-        const text = completion.choices?.[0]?.message?.content ?? "";
+        const msg = completion.choices?.[0]?.message;
+        const text = msg?.content ?? msg?.reasoning_content ?? "";
         const chatId = response.headers.get("ZG-Res-Key") || completion.id;
         let verified = true;
 

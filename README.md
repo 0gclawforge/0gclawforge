@@ -4,6 +4,8 @@
 
 **Live:** [https://0gclawforge.xyz](https://0gclawforge.xyz)
 
+**Community:** [Twitter/X](https://x.com/0gclawforge) | [Discord](https://discord.gg/FfjHj7Y4U8) | [Email](mailto:0gclawforge@gmail.com)
+
 ## Features
 
 ### Wallet Connect (RainbowKit)

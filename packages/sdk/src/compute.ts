@@ -191,13 +191,12 @@ export class ZGComputeClient {
         const msg = completion.choices?.[0]?.message;
         let text = msg?.content ?? "";
         if (!text && msg?.reasoning_content) {
-          // Reasoning models may put output in reasoning_content. Extract the
-          // final drafted reply by taking text after the last "Refined draft:"
-          // or similar marker, falling back to the last paragraph.
           const rc = msg.reasoning_content;
           const draftMatch = rc.match(/(?:Refined draft|Final draft|Draft):\s*\n([\s\S]+?)$/i);
           text = draftMatch ? draftMatch[1].trim() : rc.split("\n\n").filter(Boolean).pop()?.trim() ?? rc;
         }
+        // Strip trailing meta-commentary from reasoning models (e.g. "Count: 4 sentences.", "Checks:")
+        text = text.replace(/\n\s*(?:Count:|Checks?:|Check constraint)[\s\S]*$/i, "").trim();
         const chatId = response.headers.get("ZG-Res-Key") || completion.id;
         let verified = true;
 

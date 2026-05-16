@@ -26,7 +26,9 @@ export const PRODUCT_DESCRIPTION =
   "0GClawForge is the first complete OpenClaw-powered sovereign agent OS — a forge where teams mint, orchestrate, own (as ERC-7857 iNFTs), persist, and evolve multi-agent systems that run verifiable TEE inference, store long-term memory forever on 0G, and execute autonomous on-chain actions with zero context loss. Built on top, Eternal Clans is the flagship consumer application: tradable AI civilizations where players co-create UGC Gaming realms + SocialFi DAOs + DePIN coordination into one living, self-evolving digital nation.";
 
 export const COMPUTE_PROVIDERS = {
-  GEMMA_3_27B: "0x69Eb5a0BD7d0f4bF39eD5CE9Bd3376c61863aE08",
+  "0GM_1_0_35B_A3B": "0x4870CbC4D07d6Ac2EE5aA865588e5985FE77a4E9",
+  DEEPSEEK_V3: "0x1B3AAef3ae5050EEE04ea38cD4B087472BD85EB0",
+  GLM_5_FP8: "0xd9966e13a6026Fcca4b13E7ff95c94DE268C471C",
 } as const;
 
 export const AGENT_CAPABILITIES = [

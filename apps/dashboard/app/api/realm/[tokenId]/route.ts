@@ -86,6 +86,97 @@ function assertTokenId(tokenId: string) {
   }
 }
 
+function cleanRealmText(value: unknown, maxLength = 900) {
+  let text = String(value ?? "")
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .replace(/\\n/g, " ")
+    .replace(/\\"/g, '"')
+    .trim();
+
+  text = text.replace(/\s+/g, " ").trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 3).trim()}...`;
+}
+
+function extractRealmJsonField(value: unknown, field: "title" | "lore", maxLength = 900) {
+  const text = String(value ?? "")
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .replace(/\\n/g, " ")
+    .replace(/\\"/g, '"')
+    .trim();
+
+  const jsonStart = text.indexOf("{");
+  const jsonEnd = text.lastIndexOf("}");
+  if (jsonStart >= 0 && jsonEnd > jsonStart) {
+    const candidate = text.slice(jsonStart, jsonEnd + 1);
+    try {
+      const parsed = JSON.parse(candidate);
+      const extracted = parsed?.[field];
+      if (typeof extracted === "string") return cleanRealmText(extracted, maxLength);
+    } catch {
+      // Fall through to partial JSON extraction below.
+    }
+  }
+
+  const match = text.match(new RegExp(`"${field}"\\s*:\\s*"([^"]+)`));
+  return match?.[1] ? cleanRealmText(match[1], maxLength) : "";
+}
+
+function normalizeRealmRecord(record: any, tokenId: string, version: number) {
+  const payload = record?.payload ?? record;
+  const generated = payload?.realmGenerated ?? record?.realmGenerated;
+  const candidate =
+    payload?.title && Array.isArray(payload.assets)
+      ? payload
+      : generated?.title && Array.isArray(generated.assets)
+        ? generated
+        : null;
+
+  if (!candidate) {
+    throw new Error("Storage record is not a playable realm payload");
+  }
+
+  const prompt = cleanRealmText(candidate.prompt ?? payload?.prompt ?? payload?.proposal ?? "", 320);
+  const rawTitle = cleanRealmText(candidate.title, 96);
+  const embeddedTitle = extractRealmJsonField(candidate.lore, "title", 96);
+  const title = rawTitle && !/ realm$/i.test(rawTitle) ? rawTitle : embeddedTitle || rawTitle || `Clan #${tokenId} Realm`;
+  const lore =
+    extractRealmJsonField(candidate.lore, "lore", 900) ||
+    cleanRealmText(candidate.lore, 900) ||
+    (prompt ? `A playable clan realm forged from the vision: ${prompt}.` : "A playable clan realm stored on 0G.");
+  const assets = candidate.assets
+    .filter((asset: any) => ["biome", "npc", "quest", "artifact"].includes(asset?.type))
+    .map((asset: any) => ({
+      type: asset.type,
+      name: cleanRealmText(asset.name, 96) || `${asset.type} asset`,
+      description: cleanRealmText(asset.description, 260) || `A ${asset.type} bound to ${title}.`,
+    }));
+
+  if (assets.length === 0) {
+    throw new Error("Playable realm has no usable assets");
+  }
+
+  return {
+    kind: "ugc-realm",
+    payload: {
+      tokenId: String(candidate.tokenId ?? payload?.tokenId ?? tokenId),
+      prompt,
+      title,
+      lore,
+      assets,
+      version: Number(candidate.version ?? payload?.version ?? version),
+      previousRealmRootURI: candidate.previousRealmRootURI ?? payload?.previousRealmRootURI,
+      visualTheme: candidate.visualTheme,
+      map: candidate.map,
+      layout: candidate.layout,
+    },
+    network: record?.network,
+    createdAt: record?.createdAt ?? Date.now(),
+  };
+}
+
 async function downloadRealmRecord(rootHash: string, tokenId: string, chainId: number) {
   const tmpPath = join(tmpdir(), `0gclawforge-realm-${tokenId}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
   try {
@@ -127,7 +218,8 @@ export async function GET(req: NextRequest, { params }: { params: { tokenId: str
     }
 
     const activeRoot = requestedRealmRoot || clanState.realmRootURI;
-    const realm = await downloadRealmRecord(activeRoot, tokenId, chainId);
+    const rawRealm = await downloadRealmRecord(activeRoot, tokenId, chainId);
+    const realm = normalizeRealmRecord(rawRealm, tokenId, Math.max(1, clanState.realmCount));
     const history: Array<{ rootHash: string; title: string; createdAt: number; version: number; current: boolean }> = [];
     const seen = new Set<string>();
     let nextRoot = activeRoot;
@@ -135,15 +227,16 @@ export async function GET(req: NextRequest, { params }: { params: { tokenId: str
 
     while (nextRoot && !seen.has(nextRoot) && depth < 12) {
       seen.add(nextRoot);
-      const record = depth === 0 ? realm : await downloadRealmRecord(nextRoot, tokenId, chainId);
+      const rawRecord = depth === 0 ? rawRealm : await downloadRealmRecord(nextRoot, tokenId, chainId);
+      const record = normalizeRealmRecord(rawRecord, tokenId, Math.max(1, clanState.realmCount - depth));
       history.push({
         rootHash: nextRoot,
-        title: record?.payload?.title || `Realm Version ${history.length + 1}`,
-        createdAt: record?.createdAt || Date.now(),
-        version: Number(record?.payload?.version || Math.max(1, clanState.realmCount - depth)),
+        title: record.payload.title || `Realm Version ${history.length + 1}`,
+        createdAt: record.createdAt || Date.now(),
+        version: Number(record.payload.version || Math.max(1, clanState.realmCount - depth)),
         current: nextRoot === activeRoot,
       });
-      nextRoot = typeof record?.payload?.previousRealmRootURI === "string" ? record.payload.previousRealmRootURI : "";
+      nextRoot = typeof record.payload.previousRealmRootURI === "string" ? record.payload.previousRealmRootURI : "";
       depth += 1;
     }
 

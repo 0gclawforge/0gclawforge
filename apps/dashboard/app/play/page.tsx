@@ -17,10 +17,22 @@ interface PlayableRealm {
 }
 
 function unwrapRealm(record: RealmRecord | { payload?: RealmRecord["payload"]; createdAt?: number }): RealmRecord {
-  if (record.payload?.title && Array.isArray(record.payload.assets)) {
+  const payload = record.payload as any;
+  const candidate =
+    payload?.title && Array.isArray(payload.assets)
+      ? payload
+      : payload?.realmGenerated?.title && Array.isArray(payload.realmGenerated.assets)
+        ? payload.realmGenerated
+        : null;
+
+  if (candidate) {
     return {
       kind: "ugc-realm",
-      payload: record.payload,
+      payload: {
+        ...candidate,
+        tokenId: String(candidate.tokenId ?? payload?.tokenId ?? ""),
+        prompt: candidate.prompt ?? payload?.prompt ?? payload?.proposal ?? "",
+      },
       createdAt: record.createdAt ?? Date.now(),
     };
   }
@@ -83,6 +95,8 @@ export default function PlayDiscoveryPage() {
           args: [address],
         });
         const discovered: PlayableRealm[] = [];
+        let ownedRealmRoots = 0;
+        let skippedRealmRoots = 0;
 
         for (let index = 0; index < Number(balance); index++) {
           const ownedTokenId = await publicClient.readContract({
@@ -101,9 +115,13 @@ export default function PlayDiscoveryPage() {
           );
 
           if (!clanState.realmRootURI) continue;
+          ownedRealmRoots += 1;
 
           const response = await fetch(`/api/realm/${ownedTokenId.toString()}?chainId=${chainId}`, { cache: "no-store" });
-          if (!response.ok) continue;
+          if (!response.ok) {
+            skippedRealmRoots += 1;
+            continue;
+          }
           const payload = (await response.json()) as RealmApiResponse;
 
           try {
@@ -113,15 +131,19 @@ export default function PlayDiscoveryPage() {
               clanState: payload.clanState,
             });
           } catch {
-            continue;
+            skippedRealmRoots += 1;
           }
         }
 
         if (!cancelled) {
           setRealms(discovered);
-          if (discovered.length < Number(balance)) {
-            setStatus("Some owned realms were skipped because their stored payloads are invalid or not yet playable.");
-          }
+          setStatus(
+            skippedRealmRoots > 0
+              ? `${skippedRealmRoots} owned realm${skippedRealmRoots === 1 ? " was" : "s were"} skipped because storage could not be read yet.`
+              : ownedRealmRoots === 0
+                ? "No owned clans have realm roots yet."
+                : ""
+          );
         }
       } catch (error) {
         if (!cancelled) {

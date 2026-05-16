@@ -40,6 +40,46 @@ function normalizeClanState(raw: any) {
   };
 }
 
+function cleanText(value: unknown, maxLength = 220) {
+  let text = String(value ?? "")
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .replace(/\\n/g, " ")
+    .replace(/\\"/g, '"')
+    .trim();
+
+  const jsonStart = text.indexOf("{");
+  const jsonEnd = text.lastIndexOf("}");
+  if (jsonStart >= 0 && jsonEnd > jsonStart) {
+    const candidate = text.slice(jsonStart, jsonEnd + 1);
+    try {
+      const parsed = JSON.parse(candidate);
+      const extracted = parsed?.payload?.lore ?? parsed?.lore ?? parsed?.description ?? parsed?.title;
+      if (typeof extracted === "string") text = extracted;
+    } catch {
+      const loreMatch = candidate.match(/"lore"\s*:\s*"([^"]+)"/);
+      const titleMatch = candidate.match(/"title"\s*:\s*"([^"]+)"/);
+      text = loreMatch?.[1] || titleMatch?.[1] || text;
+    }
+  }
+
+  text = text.replace(/\s+/g, " ").trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 3).trim()}...`;
+}
+
+function summarizeRealm(realm: any) {
+  const title = cleanText(realm?.title, 80) || "Untitled realm";
+  const lore = cleanText(realm?.lore, 220);
+  const assets = Array.isArray(realm?.assets)
+    ? realm.assets
+        .slice(0, 8)
+        .map((asset: any) => `${asset.type || "asset"}: ${cleanText(asset.name, 48)}`)
+        .join(", ")
+    : "none loaded";
+  return `Realm "${title}"${lore ? `: ${lore}` : ""}. Assets: ${assets}.`;
+}
+
 async function downloadRealm(rootHash: string, tokenId: string, chainId: number) {
   const tmpPath = join(tmpdir(), `0gclawforge-chat-realm-${tokenId}-${Date.now()}.json`);
   try {
@@ -64,8 +104,9 @@ async function downloadRealm(rootHash: string, tokenId: string, chainId: number)
 
 function fallbackReply(message: string, realmContext: string, stateSummary?: string) {
   const lower = message.toLowerCase();
+  const state = cleanText(stateSummary, 160) || "current run state unavailable";
   if (/(autonomous|auto|move|npc|world)/.test(lower)) {
-    return `${AUTONOMOUS_MODEL_NAME} local directive: keep watching the realm. NPCs can patrol, micro-quests can appear, and safe floor tiles can shift even when live Compute is not available on this chain. Current state: ${stateSummary || "unknown"}.`;
+    return `${AUTONOMOUS_MODEL_NAME} local directive: keep watching the live run. The clan pilot will move the player avatar, talk to NPCs, clear small quests, collect artifacts, and reshape safe tiles while Compute is unavailable. State: ${state}.`;
   }
   if (/(quest|where|next|help)/.test(lower)) {
     return `Clan Advisor: Start with the nearest quest marker, collect artifacts before challenging the boss, and use NPC hints to choose a safer route. ${realmContext}`;
@@ -106,10 +147,7 @@ export async function POST(req: NextRequest, { params }: { params: { tokenId: st
       try {
         const realmRecord = await downloadRealm(clanState.realmRootURI, params.tokenId, chainId);
         const realm = realmRecord.payload;
-        const assetSummary = realm.assets
-          .map((a: any) => `${a.type}: ${a.name}`)
-          .join(", ");
-        realmContext = `Realm: "${realm.title}". Lore: ${realm.lore}. Assets: ${assetSummary}.`;
+        realmContext = summarizeRealm(realm);
       } catch {
         realmContext = "Realm data could not be loaded.";
       }

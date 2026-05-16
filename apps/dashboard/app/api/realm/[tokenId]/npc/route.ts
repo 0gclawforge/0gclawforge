@@ -40,6 +40,34 @@ function normalizeClanState(raw: any) {
   };
 }
 
+function cleanText(value: unknown, maxLength = 220) {
+  let text = String(value ?? "")
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .replace(/\\n/g, " ")
+    .replace(/\\"/g, '"')
+    .trim();
+
+  const jsonStart = text.indexOf("{");
+  const jsonEnd = text.lastIndexOf("}");
+  if (jsonStart >= 0 && jsonEnd > jsonStart) {
+    const candidate = text.slice(jsonStart, jsonEnd + 1);
+    try {
+      const parsed = JSON.parse(candidate);
+      const extracted = parsed?.payload?.lore ?? parsed?.lore ?? parsed?.description ?? parsed?.title;
+      if (typeof extracted === "string") text = extracted;
+    } catch {
+      const loreMatch = candidate.match(/"lore"\s*:\s*"([^"]+)"/);
+      const titleMatch = candidate.match(/"title"\s*:\s*"([^"]+)"/);
+      text = loreMatch?.[1] || titleMatch?.[1] || text;
+    }
+  }
+
+  text = text.replace(/\s+/g, " ").trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 3).trim()}...`;
+}
+
 async function downloadRealm(rootHash: string, tokenId: string, chainId: number) {
   const tmpPath = join(tmpdir(), `0gclawforge-npc-realm-${tokenId}-${Date.now()}.json`);
   try {
@@ -63,10 +91,12 @@ async function downloadRealm(rootHash: string, tokenId: string, chainId: number)
 }
 
 function fallbackNpcReply(npc: { name: string; description: string }, realm: any, stateSummary?: string) {
-  const title = realm?.title || "this realm";
-  const quest = realm?.assets?.find((asset: any) => asset.type === "quest")?.name || "the nearest quest marker";
-  const artifact = realm?.assets?.find((asset: any) => asset.type === "artifact")?.name || "a clan artifact";
-  return `${npc.name}: ${npc.description} I am speaking from local realm memory while mainnet 0G Compute is unavailable. In ${title}, recover ${artifact}, follow "${quest}", and avoid the boss until your HP and XP are ready. Current state: ${stateSummary || "unknown"}.`;
+  const title = cleanText(realm?.title, 80) || "this realm";
+  const quest = cleanText(realm?.assets?.find((asset: any) => asset.type === "quest")?.name, 60) || "the nearest quest marker";
+  const artifact = cleanText(realm?.assets?.find((asset: any) => asset.type === "artifact")?.name, 60) || "a clan artifact";
+  const description = cleanText(npc.description, 140) || "I remember the paths of this realm.";
+  const state = cleanText(stateSummary, 140) || "current state unavailable";
+  return `${npc.name}: ${description} In ${title}, recover ${artifact}, follow "${quest}", and avoid the boss until your HP and XP are ready. State: ${state}.`;
 }
 
 export async function POST(req: NextRequest, { params }: { params: { tokenId: string } }) {
@@ -113,10 +143,10 @@ export async function POST(req: NextRequest, { params }: { params: { tokenId: st
       const result = await client.query(
         `You are ${npc.name} inside the realm "${realm.title}", directed by ${AUTONOMOUS_MODEL_NAME}.
 
-Realm prompt: ${realm.prompt}
-Realm lore: ${realm.lore}
-NPC base description: ${npc.description}
-Player state summary: ${body.stateSummary || "Unknown"}
+Realm prompt: ${cleanText(realm.prompt, 220)}
+Realm lore: ${cleanText(realm.lore, 260)}
+NPC base description: ${cleanText(npc.description, 180)}
+Player state summary: ${cleanText(body.stateSummary, 180) || "Unknown"}
 Recent interactions: ${Array.isArray(body.recentLog) ? body.recentLog.join(" | ") : "None"}
 
 Respond as the NPC in 2-4 sentences. Give concrete guidance tied to the current realm map, quests, artifacts, boss, or player progress. End with one actionable hint.`,

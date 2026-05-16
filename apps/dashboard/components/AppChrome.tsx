@@ -13,7 +13,7 @@ export function AppChrome({ children }: { children: React.ReactNode }) {
             <span className="text-xl font-black">ClawForge</span>
           </a>
           <div className="hidden gap-5 md:flex">
-            <a href="/" className="text-sm text-stone/80 transition hover:text-parchment">
+            <a href="/app" className="text-sm text-stone/80 transition hover:text-parchment">
               App
             </a>
             <a href="/play" className="text-sm text-stone/80 transition hover:text-parchment">

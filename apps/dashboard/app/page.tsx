@@ -1,1266 +1,248 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import {
+  ArrowRight,
+  BookOpen,
   Bot,
-  CheckCircle2,
-  Coins,
+  Crown,
   Database,
   ExternalLink,
-  Gavel,
-  Loader2,
+  Gamepad2,
+  Globe2,
+  MessageCircle,
   Network,
-  Radio,
-  RefreshCw,
   ShieldCheck,
   Sparkles,
-  Vote,
-  Wallet,
+  Swords,
+  Zap,
+  type LucideIcon,
 } from "lucide-react";
-import { parseEther, parseEventLogs, type Address, type Hex } from "viem";
-import { useAccount, useChainId, usePublicClient, useWriteContract } from "wagmi";
-import { agentInftAbi } from "../lib/agent-inft-abi";
-import { getAgentInftAddress, getAgentMarketplaceAddress } from "../lib/contract-addresses";
 
-type Tab = "mint" | "realm" | "governance" | "evolution" | "trade";
-type StatusKind = "idle" | "working" | "success" | "error";
-
-interface Status {
-  kind: StatusKind;
-  message: string;
-  txHash?: Hex;
-}
-
-interface RuntimeStatus {
-  deployed: boolean;
-  telegramActive: boolean;
-  discordActive: boolean;
-  lastDepinSummary?: string;
-  lastQuestOutcome?: string;
-  memoryRootHash?: string | null;
-}
-
-interface RuntimeIntegration {
-  telegramConfigured: boolean;
-  telegramChatBound: boolean;
-  discordConfigured: boolean;
-  discordGuildBound: boolean;
-  discordChannelBound: boolean;
-  depinBaseUrl: string;
-}
-
-interface OwnedClanSummary {
-  tokenId: string;
-  memoryRootURI: string;
-  realmRootURI: string;
-  voteRootURI: string;
-  realmCount: number;
-}
-
-const tabs: Array<{ id: Tab; label: string }> = [
-  { id: "mint", label: "Mint Clan" },
-  { id: "realm", label: "UGC Realm" },
-  { id: "governance", label: "Votes" },
-  { id: "evolution", label: "Live Clan Dashboard" },
-  { id: "trade", label: "Trade" },
+const officialLinks = [
+  { label: "X", href: "https://x.com/0gclawforge", icon: ExternalLink },
+  { label: "Discord", href: "https://discord.gg/FfjHj7Y4U8", icon: MessageCircle },
+  { label: "Docs", href: "https://www.0gclawforge.xyz/docs", icon: BookOpen },
 ];
 
-const marketplaceAbi = [
+const pillars: Array<{ title: string; body: string; icon: LucideIcon; accent: string }> = [
   {
-    type: "function",
-    name: "createListing",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "tokenId", type: "uint256" },
-      { name: "price", type: "uint256" },
-    ],
-    outputs: [{ name: "listingId", type: "uint256" }],
+    title: "Sovereign Clan iNFTs",
+    body: "Mint ERC-7857 clans that carry identity, memory roots, realm roots, and evolution history as durable on-chain state.",
+    icon: Crown,
+    accent: "text-gold",
   },
   {
-    type: "function",
-    name: "cancelListing",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "listingId", type: "uint256" }],
-    outputs: [],
+    title: "Permanent UGC Realms",
+    body: "Turn prompts into playable fantasy worlds, then anchor lore, maps, quests, NPCs, and artifacts on 0G Storage.",
+    icon: Gamepad2,
+    accent: "text-moss",
   },
   {
-    type: "function",
-    name: "tokenToListing",
-    stateMutability: "view",
-    inputs: [{ name: "tokenId", type: "uint256" }],
-    outputs: [{ name: "listingId", type: "uint256" }],
+    title: "Autonomous World Loops",
+    body: "Let clans move, talk, run micro-quests, and reshape the map while 0G Compute provides agent direction.",
+    icon: Bot,
+    accent: "text-accent-secondary",
   },
   {
-    type: "function",
-    name: "listings",
-    stateMutability: "view",
-    inputs: [{ name: "listingId", type: "uint256" }],
-    outputs: [
-      { name: "listingId", type: "uint256" },
-      { name: "tokenId", type: "uint256" },
-      { name: "seller", type: "address" },
-      { name: "price", type: "uint256" },
-      { name: "createdAt", type: "uint256" },
-      { name: "active", type: "bool" },
-    ],
+    title: "Mainnet Ready Flow",
+    body: "Switch between Galileo and mainnet from the wallet, with contract addresses and storage endpoints resolved per chain.",
+    icon: Network,
+    accent: "text-accent-primary",
   },
-] as const;
+];
 
-const galileoExplorerUrl = process.env.NEXT_PUBLIC_OG_EXPLORER || "https://chainscan-galileo.0g.ai";
-const mainnetExplorerUrl = process.env.NEXT_PUBLIC_OG_MAINNET_EXPLORER || "https://chainscan.0g.ai";
+const flow = [
+  { label: "Mint", text: "Create a clan iNFT with mission memory and owner control.", icon: Sparkles },
+  { label: "Generate", text: "Forge a UGC realm from lore, assets, and chain state.", icon: Database },
+  { label: "Play", text: "Explore the tile world, fight bosses, collect artifacts, and complete quests.", icon: Swords },
+  { label: "Evolve", text: "Persist progress to 0G Storage and record clan evolution on-chain.", icon: ShieldCheck },
+];
 
-export default function HomePage() {
-  const { address, isConnected } = useAccount();
-  const chainId = useChainId();
-  const publicClient = usePublicClient();
-  const { writeContractAsync } = useWriteContract();
-  const contractAddress = getAgentInftAddress(chainId) as Address;
-  const marketplaceAddress = getAgentMarketplaceAddress(chainId) as Address;
-  const explorerUrl = chainId === 16661 ? mainnetExplorerUrl : galileoExplorerUrl;
+function tileTone(index: number) {
+  if (index === 8 || index === 41) return "border-ember/50 bg-ember/20 shadow-[0_0_26px_rgba(216,91,36,0.24)]";
+  if ([14, 25, 57].includes(index)) return "border-gold/60 bg-gold/20 shadow-[0_0_24px_rgba(215,168,74,0.26)]";
+  if ([5, 33, 68].includes(index)) return "border-accent-secondary/50 bg-accent-secondary/15 shadow-[0_0_22px_rgba(0,229,255,0.22)]";
+  if ([19, 44, 73].includes(index)) return "border-accent-primary/50 bg-accent-primary/15 shadow-[0_0_22px_rgba(110,84,255,0.2)]";
+  if (index % 9 === 0 || index % 13 === 0) return "border-moss/40 bg-moss/15";
+  return "border-white/10 bg-white/[0.035]";
+}
 
-  const [activeTab, setActiveTab] = useState<Tab>("mint");
-  const [status, setStatus] = useState<Status>({ kind: "idle", message: "Connect a wallet to start." });
-  const [clanName, setClanName] = useState("The Iron Grove");
-  const [archetype, setArchetype] = useState("Realm builders with memory-bound guardians");
-  const [mission, setMission] = useState("Create permanent playable worlds that evolve by community vote.");
-  const [tokenId, setTokenId] = useState("");
-  const [memoryRoot, setMemoryRoot] = useState("");
-  const [realmRoot, setRealmRoot] = useState("");
-  const [voteRoot, setVoteRoot] = useState("");
-  const [realmCount, setRealmCount] = useState(0);
-  const [realmPrompt, setRealmPrompt] = useState("Add a moonlit forest realm with a memory-bound dragon boss");
-  const [proposal, setProposal] = useState("Add a dragon boss to the forest realm");
-  const [salePrice, setSalePrice] = useState("0.25");
-  const [depinQuery, setDepinQuery] = useState("athens");
-  const [telegramChatId, setTelegramChatId] = useState("");
-  const [discordGuildId, setDiscordGuildId] = useState("");
-  const [discordChannelId, setDiscordChannelId] = useState("");
-  const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null);
-  const [runtimeIntegration, setRuntimeIntegration] = useState<RuntimeIntegration | null>(null);
-  const [depinSummary, setDepinSummary] = useState("");
-  const [questOutcome, setQuestOutcome] = useState("");
-  const [ownedClans, setOwnedClans] = useState<OwnedClanSummary[]>([]);
-  const [voteHistory, setVoteHistory] = useState<Array<{
-    rootHash: string;
-    proposal: string;
-    yesVotes: number;
-    noVotes: number;
-    createdAt: number;
-  }>>([]);
-  const [votesLoading, setVotesLoading] = useState(false);
+function tileGlyph(index: number) {
+  if (index === 8 || index === 41) return <Swords className="h-4 w-4" />;
+  if ([14, 25, 57].includes(index)) return <Sparkles className="h-4 w-4" />;
+  if ([5, 33, 68].includes(index)) return <Database className="h-4 w-4" />;
+  if ([19, 44, 73].includes(index)) return <Bot className="h-4 w-4" />;
+  if (index % 9 === 0 || index % 13 === 0) return <Globe2 className="h-3.5 w-3.5" />;
+  return null;
+}
 
-  const loadVoteHistory = async () => {
-    if (!voteRoot) return;
-    setVotesLoading(true);
-    try {
-      const res = await fetch(`/api/votes?voteRoot=${encodeURIComponent(voteRoot)}&chainId=${chainId}`);
-      const data = await res.json();
-      if (data.votes) setVoteHistory(data.votes);
-    } catch {
-      setVoteHistory([]);
-    } finally {
-      setVotesLoading(false);
-    }
-  };
-
-  const loadOwnedClans = async () => {
-    if (!isConnected || !address || !publicClient || !contractAddress) return null;
-
-    const balance = await publicClient.readContract({
-      address: contractAddress,
-      abi: agentInftAbi,
-      functionName: "balanceOf",
-      args: [address],
-    });
-    if (balance === BigInt(0)) {
-      setOwnedClans([]);
-      return null;
-    }
-
-    const discovered: OwnedClanSummary[] = [];
-    for (let index = 0; index < Number(balance); index++) {
-      const ownedTokenId = await publicClient.readContract({
-        address: contractAddress,
-        abi: agentInftAbi,
-        functionName: "tokenOfOwnerByIndex",
-        args: [address, BigInt(index)],
-      });
-
-      const state = await publicClient.readContract({
-        address: contractAddress,
-        abi: agentInftAbi,
-        functionName: "getClanState",
-        args: [ownedTokenId],
-      });
-
-      discovered.push({
-        tokenId: ownedTokenId.toString(),
-        memoryRootURI: state.memoryRootURI,
-        realmRootURI: state.realmRootURI,
-        voteRootURI: state.voteRootURI,
-        realmCount: Number(state.realmCount),
-      });
-    }
-
-    setOwnedClans(discovered);
-    const latest = discovered[discovered.length - 1];
-    if (!latest) return null;
-
-    setTokenId(latest.tokenId);
-    setMemoryRoot(latest.memoryRootURI);
-    setRealmRoot(latest.realmRootURI);
-    setVoteRoot(latest.voteRootURI);
-    setRealmCount(latest.realmCount);
-
-    return latest.tokenId;
-  };
-
-  const selectOwnedClan = (clan: OwnedClanSummary) => {
-    setTokenId(clan.tokenId);
-    setMemoryRoot(clan.memoryRootURI);
-    setRealmRoot(clan.realmRootURI);
-    setVoteRoot(clan.voteRootURI);
-    setRealmCount(clan.realmCount);
-  };
-
-  const updateOwnedClan = (nextTokenId: string, patch: Partial<OwnedClanSummary>) => {
-    setOwnedClans((current) =>
-      current.map((clan) => (clan.tokenId === nextTokenId ? { ...clan, ...patch } : clan))
-    );
-  };
-
-  useEffect(() => {
-    void refreshRuntimeStatus();
-  }, []);
-
-  // Auto-load token ID and clan state for the connected wallet
-  useEffect(() => {
-    if (!isConnected || !address || !publicClient || !contractAddress) return;
-    let cancelled = false;
-
-    (async () => {
-      try {
-        if (cancelled) return;
-        await loadOwnedClans();
-      } catch {
-        // Contract may not exist on this chain or wallet has no tokens
-      }
-    })();
-
-    return () => { cancelled = true; };
-  }, [isConnected, address, publicClient, contractAddress]);
-
-  const assertReady = () => {
-    if (!isConnected || !address) {
-      throw new Error("Connect a wallet first.");
-    }
-    if (!contractAddress) {
-      throw new Error("Agent iNFT contract address is not configured for this network.");
-    }
-  };
-
-  const postClanAction = async <T,>(body: Record<string, unknown>): Promise<T> => {
-    const response = await fetch("/api/clans", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...body, chainId }),
-    });
-    const payload = (await response.json()) as T & { error?: string };
-    if (!response.ok) {
-      throw new Error(payload.error || "0G request failed");
-    }
-    return payload;
-  };
-
-  const postAutonomyAction = async <T,>(body: Record<string, unknown>): Promise<T> => {
-    const response = await fetch("/api/autonomy", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const payload = (await response.json()) as T & { error?: string };
-    if (!response.ok) {
-      throw new Error(payload.error || "Autonomy request failed");
-    }
-    return payload;
-  };
-
-  const syncRuntimeState = (nextStatus: RuntimeStatus | null, integration?: RuntimeIntegration | null) => {
-    setRuntimeStatus(nextStatus);
-    if (integration) {
-      setRuntimeIntegration(integration);
-    }
-    if (nextStatus?.memoryRootHash) {
-      setMemoryRoot(nextStatus.memoryRootHash);
-    }
-    if (nextStatus?.lastDepinSummary) {
-      setDepinSummary(nextStatus.lastDepinSummary);
-    }
-    if (nextStatus?.lastQuestOutcome) {
-      setQuestOutcome(nextStatus.lastQuestOutcome);
-    }
-  };
-
-  const refreshRuntimeStatus = async () => {
-    const response = await fetch("/api/autonomy", { cache: "no-store" });
-    const payload = (await response.json()) as RuntimeStatus & { error?: string };
-    if (!response.ok) {
-      throw new Error(payload.error || "Failed to fetch runtime status");
-    }
-    syncRuntimeState(payload);
-    return payload;
-  };
-
-  const run = async (label: string, action: () => Promise<Status>) => {
-    setStatus({ kind: "working", message: label });
-    try {
-      const result = await action();
-      setStatus(result);
-    } catch (error) {
-      setStatus({
-        kind: "error",
-        message: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  };
-
-  const mintClan = () =>
-    run("Uploading clan memory to 0G Storage...", async () => {
-      assertReady();
-      const prepared = await postClanAction<{
-        storageURI: string;
-        metadataHash: Hex;
-        memoryRootURI: string;
-        realmRootURI: string;
-      }>({
-        action: "prepareMint",
-        clanName,
-        archetype,
-        mission,
-        owner: address,
-      });
-
-      setStatus({ kind: "working", message: "Waiting for wallet signature to mint clan iNFT..." });
-      const hash = await writeContractAsync({
-        address: contractAddress!,
-        abi: agentInftAbi,
-        functionName: "mintClan",
-        args: [
-          address!,
-          clanName,
-          archetype,
-          "0g-tee-openclaw",
-          prepared.metadataHash,
-          prepared.storageURI,
-          prepared.memoryRootURI,
-          prepared.realmRootURI,
-        ],
-      });
-
-      setMemoryRoot(prepared.memoryRootURI);
-      setRealmRoot(prepared.realmRootURI);
-      if (publicClient) {
-        try {
-          const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000, pollingInterval: 3_000 });
-          const events = parseEventLogs({
-            abi: agentInftAbi,
-            eventName: "ClanMinted",
-            logs: receipt.logs,
-          });
-          const mintedTokenId = events[0]?.args.tokenId;
-          if (mintedTokenId) {
-            setTokenId(mintedTokenId.toString());
-            await loadOwnedClans().catch(() => null);
-          }
-        } catch {
-          const recoveredTokenId = await loadOwnedClans().catch(() => null);
-          if (recoveredTokenId) {
-            return {
-              kind: "success",
-              message: `Clan mint confirmed by wallet ownership scan. Token #${recoveredTokenId} is ready.`,
-              txHash: hash,
-            };
-          }
-
-          return {
-            kind: "success",
-            message: "Clan mint tx submitted. The RPC has not returned the receipt yet, but the app will auto-load the token when the wallet index updates.",
-            txHash: hash,
-          };
-        }
-      }
-
-      return {
-        kind: "success",
-        message: "Clan minted. The token ID is filled in for realm, vote, dashboard, and trade actions.",
-        txHash: hash,
-      };
-    });
-
-  const storeRealm = () =>
-    run("Uploading realm to 0G Storage...", async () => {
-      assertReady();
-      if (!tokenId) throw new Error("Enter the clan token ID first.");
-      const stored = await postClanAction<{ realmRootURI: string; realmCount: number }>({
-        action: "storeRealm",
-        tokenId,
-        prompt: realmPrompt,
-        currentRealmCount: realmCount,
-        currentRealmRootURI: realmRoot,
-      });
-
-      setStatus({ kind: "working", message: "Waiting for wallet signature to update realm root..." });
-      const hash = await writeContractAsync({
-        address: contractAddress!,
-        abi: agentInftAbi,
-        functionName: "updateRealmRoot",
-        args: [BigInt(tokenId), stored.realmRootURI, BigInt(stored.realmCount), "0x"],
-      });
-
-      setRealmRoot(stored.realmRootURI);
-      setRealmCount(stored.realmCount);
-      updateOwnedClan(tokenId, { realmRootURI: stored.realmRootURI, realmCount: stored.realmCount });
-      return { kind: "success", message: "Realm root updated on-chain.", txHash: hash };
-    });
-
-  const regenerateRealm = () =>
-    run("Regenerating realm from prompt...", async () => {
-      assertReady();
-      if (!tokenId) throw new Error("Enter the clan token ID first.");
-      const stored = await postClanAction<{ realmRootURI: string; realmCount: number }>({
-        action: "storeRealm",
-        tokenId,
-        prompt: realmPrompt,
-        currentRealmCount: realmCount,
-        currentRealmRootURI: realmRoot,
-      });
-
-      setStatus({ kind: "working", message: "Waiting for wallet signature to replace the current realm root..." });
-      const hash = await writeContractAsync({
-        address: contractAddress!,
-        abi: agentInftAbi,
-        functionName: "updateRealmRoot",
-        args: [BigInt(tokenId), stored.realmRootURI, BigInt(stored.realmCount), "0x"],
-      });
-
-      setRealmRoot(stored.realmRootURI);
-      setRealmCount(stored.realmCount);
-      updateOwnedClan(tokenId, { realmRootURI: stored.realmRootURI, realmCount: stored.realmCount });
-      return { kind: "success", message: "Realm regenerated and root updated on-chain.", txHash: hash };
-    });
-
-  const storeVote = () =>
-    run("Uploading vote record to 0G Storage...", async () => {
-      assertReady();
-      if (!tokenId) throw new Error("Enter the clan token ID first.");
-      const stored = await postClanAction<{ voteRootURI: string; proposalCount: number }>({
-        action: "storeVote",
-        tokenId,
-        proposal,
-        yesVotes: 1,
-        noVotes: 0,
-        ...(voteRoot ? { previousVoteRoot: voteRoot } : {}),
-      });
-
-      setStatus({ kind: "working", message: "Waiting for wallet signature to update vote root..." });
-      const hash = await writeContractAsync({
-        address: contractAddress!,
-        abi: agentInftAbi,
-        functionName: "updateVoteRoot",
-        args: [BigInt(tokenId), stored.voteRootURI, BigInt(stored.proposalCount), "0x"],
-      });
-
-      setVoteRoot(stored.voteRootURI);
-      updateOwnedClan(tokenId, { voteRootURI: stored.voteRootURI });
-      return { kind: "success", message: "Vote root updated on-chain.", txHash: hash };
-    });
-
-  const executeEvolution = () =>
-    run("Uploading evolution record to 0G Storage...", async () => {
-      assertReady();
-      if (!tokenId) throw new Error("Enter the clan token ID first.");
-      const stored = await postClanAction<{
-        metadataHash: Hex;
-        storageURI: string;
-        memoryRootURI: string;
-        realmRootURI: string;
-        memorySize: number;
-        realmCount: number;
-      }>({
-        action: "storeEvolution",
-        tokenId,
-        proposal,
-        prompt: realmPrompt,
-        currentRealmCount: realmCount,
-        executor: address,
-      });
-
-      setStatus({ kind: "working", message: "Waiting for wallet signature to record clan evolution..." });
-      const hash = await writeContractAsync({
-        address: contractAddress!,
-        abi: agentInftAbi,
-        functionName: "recordClanEvolution",
-        args: [
-          BigInt(tokenId),
-          stored.metadataHash,
-          stored.storageURI,
-          stored.memoryRootURI,
-          stored.realmRootURI,
-          BigInt(stored.memorySize),
-          BigInt(stored.realmCount),
-          "0x",
-        ],
-      });
-
-      setMemoryRoot(stored.memoryRootURI);
-      setRealmRoot(stored.realmRootURI);
-      setRealmCount(stored.realmCount);
-      updateOwnedClan(tokenId, {
-        memoryRootURI: stored.memoryRootURI,
-        realmRootURI: stored.realmRootURI,
-        realmCount: stored.realmCount,
-      });
-      return { kind: "success", message: "Clan evolution submitted on-chain.", txHash: hash };
-    });
-
-  const deployRuntime = () =>
-    run("Deploying live Telegram and Discord clan runtime...", async () => {
-      if (!tokenId) throw new Error("Mint or enter a clan token ID first.");
-      const payload = await postAutonomyAction<{
-        status: RuntimeStatus;
-        integration: RuntimeIntegration;
-      }>({
-        action: "deploy",
-        clanName,
-        tokenId,
-        proposal,
-        realmPrompt,
-        depinQuery,
-        memoryRootHash: memoryRoot || null,
-        telegramChatId,
-        discordGuildId,
-        discordChannelId,
-      });
-      syncRuntimeState(payload.status, payload.integration);
-
-      const transportSummary = [
-        payload.integration.telegramConfigured
-          ? payload.integration.telegramChatBound
-            ? "Telegram bot bound to a live chat."
-            : "Telegram bot deployed; bind a chat by starting the bot or supplying a chat ID."
-          : "Telegram token is not configured.",
-        payload.integration.discordConfigured
-          ? payload.integration.discordGuildBound
-            ? "Discord commands deployed to the target guild."
-            : "Discord commands deployed globally; set a guild ID for guild-scoped management."
-          : "Discord token is not configured.",
-      ].join(" ");
-
-      return {
-        kind: "success",
-        message: `Clan runtime deployed. ${transportSummary}`,
-      };
-    });
-
-  const runAutonomousQuest = () =>
-    run("Running live autonomous quest + DePIN cycle...", async () => {
-      const payload = await postAutonomyAction<{
-        status: RuntimeStatus;
-        integration: RuntimeIntegration;
-      }>({
-        action: "runQuest",
-      });
-      syncRuntimeState(payload.status, payload.integration);
-      return {
-        kind: "success",
-        message: payload.status.lastQuestOutcome || "Autonomous cycle completed.",
-      };
-    });
-
-  const fetchDepinSnapshot = () =>
-    run("Fetching live WeatherXM network state...", async () => {
-      const payload = await postAutonomyAction<{
-        summary: string;
-        integration: RuntimeIntegration;
-      }>({
-        action: "depin",
-        depinQuery,
-      });
-      setDepinSummary(payload.summary);
-      setRuntimeIntegration(payload.integration);
-      return {
-        kind: "success",
-        message: "Fetched live WeatherXM data and stored the summary in dashboard state.",
-      };
-    });
-
-  const refreshAutonomy = () =>
-    run("Refreshing clan runtime status...", async () => {
-      const nextStatus = await refreshRuntimeStatus();
-      return {
-        kind: "success",
-        message: nextStatus.deployed ? "Runtime status refreshed." : "Runtime is not deployed yet.",
-      };
-    });
-
-  const stopAutonomy = () =>
-    run("Stopping live clan runtime...", async () => {
-      const payload = await postAutonomyAction<{ stopped: boolean; status: RuntimeStatus }>({
-        action: "stop",
-      });
-      syncRuntimeState(payload.status, null);
-      return {
-        kind: "success",
-        message: payload.stopped ? "Runtime stopped." : "Runtime status unchanged.",
-      };
-    });
-
-  const listClan = () =>
-    run("Preparing marketplace listing...", async () => {
-      assertReady();
-      if (!tokenId) throw new Error("Enter the clan token ID first.");
-      if (!marketplaceAddress) throw new Error("Marketplace contract address is not configured for this network.");
-
-      const existingListingId = await publicClient
-        ?.readContract({
-          address: marketplaceAddress,
-          abi: marketplaceAbi,
-          functionName: "tokenToListing",
-          args: [BigInt(tokenId)],
-        })
-        .catch(() => BigInt(0));
-
-      if (existingListingId && existingListingId !== BigInt(0)) {
-        const existing = await publicClient
-          ?.readContract({
-            address: marketplaceAddress,
-            abi: marketplaceAbi,
-            functionName: "listings",
-            args: [existingListingId],
-          })
-          .catch(() => null);
-        const active = Boolean((existing as any)?.active ?? (existing as any)?.[5]);
-        if (active) throw new Error("This clan already has an active marketplace listing.");
-      }
-
-      setStatus({ kind: "working", message: "Approve marketplace transfer for this clan..." });
-      const approvalHash = await writeContractAsync({
-        address: contractAddress!,
-        abi: agentInftAbi,
-        functionName: "approve",
-        args: [marketplaceAddress, BigInt(tokenId)],
-      });
-      if (publicClient) {
-        await publicClient.waitForTransactionReceipt({ hash: approvalHash, timeout: 60_000, pollingInterval: 3_000 });
-      }
-
-      setStatus({ kind: "working", message: "Create marketplace listing..." });
-      const hash = await writeContractAsync({
-        address: marketplaceAddress,
-        abi: marketplaceAbi,
-        functionName: "createListing",
-        args: [BigInt(tokenId), parseEther(salePrice)],
-      });
-      return { kind: "success", message: "Clan listed on the marketplace contract.", txHash: hash };
-    });
-
-  const delistClan = () =>
-    run("Removing marketplace listing...", async () => {
-      assertReady();
-      if (!tokenId) throw new Error("Enter the clan token ID first.");
-      if (!marketplaceAddress) throw new Error("Marketplace contract address is not configured for this network.");
-
-      const listingId = await publicClient
-        ?.readContract({
-          address: marketplaceAddress,
-          abi: marketplaceAbi,
-          functionName: "tokenToListing",
-          args: [BigInt(tokenId)],
-        })
-        .catch(() => BigInt(0));
-
-      if (listingId && listingId !== BigInt(0)) {
-        const hash = await writeContractAsync({
-          address: marketplaceAddress,
-          abi: marketplaceAbi,
-          functionName: "cancelListing",
-          args: [listingId],
-        });
-        return { kind: "success", message: "Marketplace listing cancelled.", txHash: hash };
-      }
-
-      const hash = await writeContractAsync({
-        address: contractAddress!,
-        abi: agentInftAbi,
-        functionName: "delist",
-        args: [BigInt(tokenId)],
-      });
-      return { kind: "success", message: "Legacy iNFT sale flag removed.", txHash: hash };
-    });
-
+export default function LandingPage() {
   return (
-    <main className="min-h-screen overflow-hidden">
-      <section className="mx-auto grid max-w-7xl gap-8 px-6 py-10 lg:grid-cols-[320px_1fr]">
-        <aside className="space-y-5 lg:sticky lg:top-24 lg:h-[calc(100vh-7rem)]">
-          <div>
-            <h1 className="text-4xl font-black leading-tight text-parchment">0GClawForge</h1>
-            <p className="mt-3 text-sm leading-6 text-stone">
-              Mint, store, evolve, deploy to chat, and trade real clan iNFTs on 0G Galileo. Switch to mainnet from the wallet control when addresses are deployed there.
-            </p>
-          </div>
-
-          <div className="grid gap-2">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center justify-between rounded-md border px-4 py-3 text-left text-sm font-bold transition ${
-                  activeTab === tab.id
-                    ? "border-gold bg-gold text-obsidian"
-                    : "border-white/10 bg-black/20 text-stone hover:text-parchment"
-                }`}
+    <main className="overflow-hidden bg-obsidian text-parchment">
+      <section className="relative min-h-[calc(100vh-8rem)] border-b border-white/10">
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(216,91,36,0.24),transparent_28rem),radial-gradient(circle_at_80%_20%,rgba(0,229,255,0.14),transparent_30rem),linear-gradient(135deg,#0d0b08_0%,#17100b_42%,#07120e_100%)]" />
+          <motion.div
+            aria-hidden
+            className="absolute left-1/2 top-16 grid w-[min(760px,88vw)] -translate-x-1/2 rotate-[-7deg] grid-cols-10 gap-2 opacity-80"
+            initial={{ y: 28, opacity: 0 }}
+            animate={{ y: 0, opacity: 0.8 }}
+            transition={{ duration: 0.9 }}
+          >
+            {Array.from({ length: 80 }).map((_, index) => (
+              <motion.div
+                key={index}
+                className={`flex aspect-square items-center justify-center rounded-md border text-gold backdrop-blur-sm ${tileTone(index)}`}
+                animate={{ y: index % 7 === 0 ? [0, -4, 0] : 0, opacity: [0.72, 1, 0.72] }}
+                transition={{ duration: 3 + (index % 5), repeat: Infinity, delay: index * 0.025 }}
               >
-                {tab.label}
-                {activeTab === tab.id && <CheckCircle2 className="h-4 w-4" />}
-              </button>
+                {tileGlyph(index)}
+              </motion.div>
             ))}
+          </motion.div>
+          <div className="absolute inset-0 bg-gradient-to-b from-obsidian/10 via-obsidian/66 to-obsidian" />
+        </div>
+
+        <div className="relative z-10 mx-auto grid max-w-7xl gap-10 px-6 pb-12 pt-16 lg:grid-cols-[1fr_430px] lg:items-end lg:pt-24">
+          <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} className="max-w-3xl">
+            <div className="mb-5 inline-flex items-center gap-2 rounded-md border border-gold/30 bg-gold/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-gold">
+              <Zap className="h-3.5 w-3.5" />
+              Sovereign agent OS on 0G
+            </div>
+            <h1 className="text-5xl font-black leading-[1.02] text-parchment md:text-7xl">0G ClawForge</h1>
+            <p className="mt-6 max-w-2xl text-lg leading-8 text-stone md:text-xl">
+              Mint autonomous clans, generate permanent UGC realms, play them as tile-map worlds, and record every evolution through 0G Storage, 0G Compute, and on-chain state.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <a
+                href="/app"
+                className="inline-flex items-center gap-2 rounded-lg bg-gold px-5 py-3 text-sm font-semibold text-obsidian shadow-glow transition hover:translate-y-[-1px]"
+              >
+                Launch App
+                <ArrowRight className="h-4 w-4" />
+              </a>
+              <a
+                href="/play"
+                className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/[0.04] px-5 py-3 text-sm font-semibold text-parchment transition hover:border-gold/50 hover:text-gold"
+              >
+                Enter Realms
+                <Gamepad2 className="h-4 w-4" />
+              </a>
+            </div>
+            <div className="mt-8 flex flex-wrap gap-3">
+              {officialLinks.map((link) => {
+                const Icon = link.icon;
+                return (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-black/25 px-3 py-2 text-sm text-stone transition hover:border-gold/40 hover:text-parchment"
+                  >
+                    <Icon className="h-4 w-4 text-gold" />
+                    {link.label}
+                  </a>
+                );
+              })}
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="rounded-md border border-white/10 bg-black/35 p-5 shadow-2xl shadow-black/40 backdrop-blur-xl"
+          >
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-stone">Live Realm Loop</p>
+                <h2 className="mt-1 text-2xl font-black text-parchment">Autonomous Clan</h2>
+              </div>
+              <Bot className="h-7 w-7 text-gold" />
+            </div>
+            <div className="mt-5 space-y-4 font-mono text-xs">
+              {[
+                ["Compute", "0GM-1.0-35B-A3B directive queued"],
+                ["Storage", "realm-root + memory-root anchored"],
+                ["World", "NPC patrol, artifact recovered, boss scouted"],
+                ["Chain", "evolution ready after completion"],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-start justify-between gap-4 border-b border-white/10 pb-3">
+                  <span className="text-stone">{label}</span>
+                  <span className="max-w-[240px] text-right text-parchment">{value}</span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      <section className="mx-auto grid max-w-7xl gap-4 px-6 py-14 md:grid-cols-2 xl:grid-cols-4">
+        {pillars.map((pillar, index) => {
+          const Icon = pillar.icon;
+          return (
+            <motion.article
+              key={pillar.title}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-80px" }}
+              transition={{ delay: index * 0.06 }}
+              className="rounded-md border border-white/10 bg-white/[0.035] p-5"
+            >
+              <Icon className={`h-6 w-6 ${pillar.accent}`} />
+              <h2 className="mt-5 text-xl font-black text-parchment">{pillar.title}</h2>
+              <p className="mt-3 text-sm leading-6 text-stone">{pillar.body}</p>
+            </motion.article>
+          );
+        })}
+      </section>
+
+      <section className="border-y border-white/10 bg-black/20">
+        <div className="mx-auto grid max-w-7xl gap-8 px-6 py-16 lg:grid-cols-[360px_1fr] lg:items-start">
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-gold">Forge to living world</p>
+            <h2 className="mt-3 text-3xl font-black leading-tight text-parchment md:text-4xl">One loop for ownership, memory, play, and evolution.</h2>
           </div>
-
-          <StatusPanel status={status} explorerUrl={explorerUrl} />
-          <OwnedClansPanel clans={ownedClans} activeTokenId={tokenId} onSelect={selectOwnedClan} />
-        </aside>
-
-        <motion.section
-          className="space-y-6"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35 }}
-        >
-          <div className="grid gap-3 md:grid-cols-4">
-            <Metric icon={Network} label="Chain" value={chainId === 16661 ? "0G Mainnet" : "0G Galileo"} />
-            <Metric icon={Wallet} label="Wallet" value={isConnected && address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Not connected"} />
-            <Metric icon={ShieldCheck} label="iNFT Contract" value={contractAddress ? `${contractAddress.slice(0, 6)}...${contractAddress.slice(-4)}` : "Missing"} />
-            <Metric icon={Database} label="Clan Token" value={tokenId || "Not minted"} />
+          <div className="grid gap-4 md:grid-cols-2">
+            {flow.map((item) => {
+              const Icon = item.icon;
+              return (
+                <div key={item.label} className="rounded-md border border-white/10 bg-obsidian/70 p-5">
+                  <div className="flex items-center gap-3">
+                    <Icon className="h-5 w-5 text-gold" />
+                    <h3 className="text-lg font-black text-parchment">{item.label}</h3>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-stone">{item.text}</p>
+                </div>
+              );
+            })}
           </div>
+        </div>
+      </section>
 
-          <div className="grid gap-6 lg:grid-cols-[1fr_0.8fr]">
-            <Workspace
-              activeTab={activeTab}
-              clanName={clanName}
-              setClanName={setClanName}
-              archetype={archetype}
-              setArchetype={setArchetype}
-              mission={mission}
-              setMission={setMission}
-              tokenId={tokenId}
-              setTokenId={setTokenId}
-              realmRoot={realmRoot}
-              realmPrompt={realmPrompt}
-              setRealmPrompt={setRealmPrompt}
-              proposal={proposal}
-              setProposal={setProposal}
-              salePrice={salePrice}
-              setSalePrice={setSalePrice}
-              mintClan={mintClan}
-              storeRealm={storeRealm}
-              regenerateRealm={regenerateRealm}
-              storeVote={storeVote}
-              voteHistory={voteHistory}
-              votesLoading={votesLoading}
-              loadVoteHistory={loadVoteHistory}
-              voteRoot={voteRoot}
-              executeEvolution={executeEvolution}
-              listClan={listClan}
-              delistClan={delistClan}
-              busy={status.kind === "working"}
-              depinQuery={depinQuery}
-              setDepinQuery={setDepinQuery}
-              telegramChatId={telegramChatId}
-              setTelegramChatId={setTelegramChatId}
-              discordGuildId={discordGuildId}
-              setDiscordGuildId={setDiscordGuildId}
-              discordChannelId={discordChannelId}
-              setDiscordChannelId={setDiscordChannelId}
-              deployRuntime={deployRuntime}
-              runAutonomousQuest={runAutonomousQuest}
-              fetchDepinSnapshot={fetchDepinSnapshot}
-              refreshAutonomy={refreshAutonomy}
-              stopAutonomy={stopAutonomy}
-              runtimeStatus={runtimeStatus}
-              depinSummary={depinSummary}
-              questOutcome={questOutcome}
-              runtimeIntegration={runtimeIntegration}
-            />
-
-            <StatePanel
-              memoryRoot={memoryRoot}
-              realmRoot={realmRoot}
-              voteRoot={voteRoot}
-              realmCount={realmCount}
-              tokenId={tokenId}
-              runtimeStatus={runtimeStatus}
-              depinSummary={depinSummary}
-              questOutcome={questOutcome}
-            />
-          </div>
-        </motion.section>
+      <section className="mx-auto flex max-w-7xl flex-col gap-6 px-6 py-14 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.18em] text-gold">Eternal Clans</p>
+          <h2 className="mt-2 text-3xl font-black text-parchment">Build a realm that keeps becoming itself.</h2>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <a href="/app" className="inline-flex items-center gap-2 rounded-lg bg-gold px-5 py-3 text-sm font-semibold text-obsidian">
+            Start Forging
+            <ArrowRight className="h-4 w-4" />
+          </a>
+          <a
+            href="https://www.0gclawforge.xyz/docs"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 rounded-lg border border-white/15 px-5 py-3 text-sm font-semibold text-parchment hover:border-gold/50"
+          >
+            Read Docs
+            <BookOpen className="h-4 w-4" />
+          </a>
+        </div>
       </section>
     </main>
-  );
-}
-
-function Workspace(props: {
-  activeTab: Tab;
-  clanName: string;
-  setClanName: (value: string) => void;
-  archetype: string;
-  setArchetype: (value: string) => void;
-  mission: string;
-  setMission: (value: string) => void;
-  tokenId: string;
-  setTokenId: (value: string) => void;
-  realmRoot: string;
-  realmPrompt: string;
-  setRealmPrompt: (value: string) => void;
-  proposal: string;
-  setProposal: (value: string) => void;
-  salePrice: string;
-  setSalePrice: (value: string) => void;
-  mintClan: () => void;
-  storeRealm: () => void;
-  regenerateRealm: () => void;
-  storeVote: () => void;
-  voteHistory: Array<{ rootHash: string; proposal: string; yesVotes: number; noVotes: number; createdAt: number }>;
-  votesLoading: boolean;
-  loadVoteHistory: () => void;
-  voteRoot: string;
-  executeEvolution: () => void;
-  listClan: () => void;
-  delistClan: () => void;
-  busy: boolean;
-  depinQuery: string;
-  setDepinQuery: (value: string) => void;
-  telegramChatId: string;
-  setTelegramChatId: (value: string) => void;
-  discordGuildId: string;
-  setDiscordGuildId: (value: string) => void;
-  discordChannelId: string;
-  setDiscordChannelId: (value: string) => void;
-  deployRuntime: () => void;
-  runAutonomousQuest: () => void;
-  fetchDepinSnapshot: () => void;
-  refreshAutonomy: () => void;
-  stopAutonomy: () => void;
-  runtimeStatus: RuntimeStatus | null;
-  depinSummary: string;
-  questOutcome: string;
-  runtimeIntegration: RuntimeIntegration | null;
-}) {
-  if (props.activeTab === "mint") {
-    return (
-      <Panel title="Mint a Clan iNFT" icon={Sparkles}>
-        <TextInput label="Clan name" value={props.clanName} onChange={props.setClanName} />
-        <TextInput label="Archetype" value={props.archetype} onChange={props.setArchetype} />
-        <TextArea label="Mission memory" value={props.mission} onChange={props.setMission} />
-        <ActionButton onClick={props.mintClan} busy={props.busy} label="Upload to 0G and mint iNFT" />
-      </Panel>
-    );
-  }
-
-  if (props.activeTab === "realm") {
-    return (
-      <Panel title="Create Permanent UGC Realm" icon={Database}>
-        <TextInput label="Clan token ID" value={props.tokenId} onChange={props.setTokenId} />
-        <TextArea label="OpenClaw realm prompt" value={props.realmPrompt} onChange={props.setRealmPrompt} />
-        <div className="flex flex-wrap gap-3">
-          <ActionButton onClick={props.storeRealm} busy={props.busy} label="Store realm and update root" />
-          <button
-            onClick={props.regenerateRealm}
-            disabled={props.busy}
-            className="inline-flex items-center gap-2 rounded-md border border-gold/40 px-4 py-3 text-sm font-bold text-gold disabled:opacity-60"
-          >
-            Regenerate Realm
-          </button>
-        </div>
-        <p className="text-xs leading-5 text-stone">
-          `Regenerate Realm` creates a fresh playable realm from the current prompt and replaces the clan's active realm root.
-          Older 0G realm records remain preserved in storage, and the clan memory root is not erased by regeneration.
-        </p>
-        {props.realmRoot && props.tokenId && (
-          <a
-            href={`/play/${props.tokenId}`}
-            className="inline-flex items-center gap-2 rounded-lg border border-gold/40 px-5 py-2.5 text-sm font-semibold text-gold transition hover:bg-gold hover:text-obsidian"
-          >
-            Play this Realm →
-          </a>
-        )}
-      </Panel>
-    );
-  }
-
-  if (props.activeTab === "governance") {
-    return (
-      <div className="space-y-6">
-        <Panel title="Community Vote Root" icon={Vote}>
-          <TextInput label="Clan token ID" value={props.tokenId} onChange={props.setTokenId} />
-          <TextArea label="Evolution proposal" value={props.proposal} onChange={props.setProposal} />
-          <ActionButton onClick={props.storeVote} busy={props.busy} label="Store vote and update root" />
-        </Panel>
-
-        <Panel title="Vote History" icon={Gavel}>
-          {props.voteRoot ? (
-            <>
-              <button
-                onClick={props.loadVoteHistory}
-                disabled={props.votesLoading}
-                className="inline-flex items-center gap-2 rounded-md border border-gold/40 px-4 py-2.5 text-sm font-bold text-gold transition hover:bg-gold hover:text-obsidian disabled:opacity-60"
-              >
-                {props.votesLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading from 0G Storage...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="h-4 w-4" />
-                    Load vote history
-                  </>
-                )}
-              </button>
-
-              {props.voteHistory.length > 0 && (
-                <div className="mt-4 space-y-3">
-                  <p className="text-xs font-bold uppercase tracking-wider text-stone">
-                    {props.voteHistory.length} proposal{props.voteHistory.length === 1 ? "" : "s"} found
-                  </p>
-                  {props.voteHistory.map((vote, i) => (
-                    <div
-                      key={vote.rootHash}
-                      className="rounded-md border border-white/10 bg-black/25 p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-bold text-parchment">
-                            #{props.voteHistory.length - i}: {vote.proposal}
-                          </p>
-                          <div className="mt-2 flex items-center gap-4">
-                            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-moss">
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                              {vote.yesVotes} Yes
-                            </span>
-                            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-red-400">
-                              {vote.noVotes} No
-                            </span>
-                            <span className={`text-xs font-bold ${vote.yesVotes >= vote.noVotes ? "text-gold" : "text-stone"}`}>
-                              {vote.yesVotes >= vote.noVotes ? "Passing" : "Rejected"}
-                            </span>
-                          </div>
-                          {vote.createdAt > 0 && (
-                            <p className="mt-1.5 text-xs text-stone">
-                              {new Date(vote.createdAt).toLocaleString()}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <p className="mt-2 truncate text-xs text-stone/60" title={vote.rootHash}>
-                        0G Storage: {vote.rootHash.slice(0, 16)}...{vote.rootHash.slice(-8)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <p className="text-sm text-stone">No vote root on-chain yet. Submit a proposal above to get started.</p>
-          )}
-        </Panel>
-      </div>
-    );
-  }
-
-  if (props.activeTab === "evolution") {
-    return (
-      <div className="space-y-6">
-        <Panel title="Live Clan Dashboard" icon={ShieldCheck}>
-          <div className="grid gap-4 md:grid-cols-2">
-            <TextInput label="Clan token ID" value={props.tokenId} onChange={props.setTokenId} />
-            <TextInput label="WeatherXM query" value={props.depinQuery} onChange={props.setDepinQuery} />
-          </div>
-          <TextArea label="Winning proposal" value={props.proposal} onChange={props.setProposal} />
-          <TextArea label="Active realm prompt" value={props.realmPrompt} onChange={props.setRealmPrompt} />
-          <div className="flex flex-wrap gap-3">
-            <ActionButton onClick={props.executeEvolution} busy={props.busy} label="Record on-chain evolution" />
-            <button
-              onClick={props.refreshAutonomy}
-              disabled={props.busy}
-              className="inline-flex items-center gap-2 rounded-md border border-white/10 px-4 py-3 text-sm font-bold text-parchment disabled:opacity-60"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Refresh runtime
-            </button>
-          </div>
-        </Panel>
-
-        <div className="grid gap-6 xl:grid-cols-2">
-          <Panel title="Deploy to Chat" icon={Bot}>
-            <TextInput label="Telegram chat ID (optional)" value={props.telegramChatId} onChange={props.setTelegramChatId} />
-            <TextInput label="Discord guild ID (optional)" value={props.discordGuildId} onChange={props.setDiscordGuildId} />
-            <TextInput label="Discord channel ID (optional)" value={props.discordChannelId} onChange={props.setDiscordChannelId} />
-            <div className="flex flex-wrap gap-3">
-              <ActionButton onClick={props.deployRuntime} busy={props.busy} label="Deploy live bots" />
-              <button
-                onClick={props.stopAutonomy}
-                disabled={props.busy}
-                className="inline-flex items-center gap-2 rounded-md border border-white/10 px-4 py-3 text-sm font-bold text-parchment disabled:opacity-60"
-              >
-                Stop runtime
-              </button>
-            </div>
-            <IntegrationList integration={props.runtimeIntegration} />
-          </Panel>
-
-          <Panel title="Autonomous Engine" icon={Radio}>
-            <div className="flex flex-wrap gap-3">
-              <ActionButton onClick={props.runAutonomousQuest} busy={props.busy} label="Run quest cycle now" />
-              <button
-                onClick={props.fetchDepinSnapshot}
-                disabled={props.busy}
-                className="inline-flex items-center gap-2 rounded-md border border-white/10 px-4 py-3 text-sm font-bold text-parchment disabled:opacity-60"
-              >
-                <Database className="h-4 w-4" />
-                Fetch WeatherXM
-              </button>
-            </div>
-            <OutputCard title="Latest quest outcome" value={props.questOutcome || "No autonomous quest has run yet."} />
-            <OutputCard title="Latest DePIN summary" value={props.depinSummary || "No WeatherXM snapshot fetched yet."} />
-          </Panel>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <Panel title="Trade Clan iNFT" icon={Gavel}>
-      <TextInput label="Clan token ID" value={props.tokenId} onChange={props.setTokenId} />
-      <TextInput label="Sale price in OG" value={props.salePrice} onChange={props.setSalePrice} />
-      <div className="flex flex-wrap gap-3">
-        <ActionButton onClick={props.listClan} busy={props.busy} label="List for sale" />
-        <button
-          onClick={props.delistClan}
-          disabled={props.busy}
-          className="inline-flex items-center gap-2 rounded-md border border-white/10 px-4 py-3 text-sm font-bold text-parchment disabled:opacity-60"
-        >
-          Remove listing
-        </button>
-      </div>
-    </Panel>
-  );
-}
-
-function StatePanel(props: {
-  memoryRoot: string;
-  realmRoot: string;
-  voteRoot: string;
-  realmCount: number;
-  tokenId: string;
-  runtimeStatus: RuntimeStatus | null;
-  depinSummary: string;
-  questOutcome: string;
-}) {
-  return (
-    <Panel title="Live Clan State" icon={Coins}>
-      <StateRow label="Token ID" value={props.tokenId || "Mint a clan or enter an existing token"} />
-      <StateRow label="Memory root" value={props.memoryRoot || "No local root yet"} />
-      <StateRow label="Realm root" value={props.realmRoot || "No local root yet"} />
-      <StateRow label="Vote root" value={props.voteRoot || "No local root yet"} />
-      <StateRow label="Realm count" value={String(props.realmCount)} />
-      <StateRow label="Telegram runtime" value={props.runtimeStatus?.telegramActive ? "Active" : "Inactive"} />
-      <StateRow label="Discord runtime" value={props.runtimeStatus?.discordActive ? "Active" : "Inactive"} />
-      <StateRow label="Latest quest" value={props.questOutcome || "No quest run yet"} />
-      <StateRow label="Latest DePIN" value={props.depinSummary || "No WeatherXM snapshot yet"} />
-      <p className="mt-5 text-xs leading-5 text-stone">
-        These values are produced by real 0G Storage upload responses, live WeatherXM network pulls, and runtime actions that write new memory roots back into the clan state.
-      </p>
-    </Panel>
-  );
-}
-
-function StatusPanel({ status, explorerUrl }: { status: Status; explorerUrl: string }) {
-  return (
-    <div className="rounded-md border border-white/10 bg-black/25 p-4">
-      <div className="flex items-start gap-3">
-        {status.kind === "working" ? (
-          <Loader2 className="mt-0.5 h-5 w-5 animate-spin text-gold" />
-        ) : status.kind === "success" ? (
-          <CheckCircle2 className="mt-0.5 h-5 w-5 text-moss" />
-        ) : (
-          <ShieldCheck className="mt-0.5 h-5 w-5 text-stone" />
-        )}
-        <div className="min-w-0">
-          <p className="text-sm font-bold text-parchment">Status</p>
-          <p className="mt-1 break-words text-sm leading-5 text-stone">{status.message}</p>
-          {status.txHash && (
-            <a
-              href={`${explorerUrl}/tx/${status.txHash}`}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-3 inline-flex items-center gap-2 text-xs font-bold text-gold"
-            >
-              View transaction <ExternalLink className="h-3 w-3" />
-            </a>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function OwnedClansPanel({
-  clans,
-  activeTokenId,
-  onSelect,
-}: {
-  clans: OwnedClanSummary[];
-  activeTokenId: string;
-  onSelect: (clan: OwnedClanSummary) => void;
-}) {
-  return (
-    <div className="rounded-md border border-white/10 bg-black/25 p-4">
-      <p className="text-sm font-bold text-parchment">Owned Clans</p>
-      {clans.length === 0 ? (
-        <p className="mt-2 text-sm leading-5 text-stone">No clan iNFTs found for the connected wallet.</p>
-      ) : (
-        <div className="mt-3 space-y-2">
-          {clans.map((clan) => (
-            <button
-              key={clan.tokenId}
-              onClick={() => onSelect(clan)}
-              className={`w-full rounded-md border px-3 py-3 text-left transition ${
-                activeTokenId === clan.tokenId
-                  ? "border-gold bg-gold/10"
-                  : "border-white/10 bg-black/20 hover:border-gold/40"
-              }`}
-            >
-              <p className="text-sm font-bold text-parchment">Clan #{clan.tokenId}</p>
-              <p className="mt-1 text-xs text-stone">
-                {clan.realmRootURI ? `${clan.realmCount} realm version${clan.realmCount === 1 ? "" : "s"}` : "No realm stored yet"}
-              </p>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Panel({ title, icon: Icon, children }: { title: string; icon: typeof Sparkles; children: ReactNode }) {
-  return (
-    <section className="rounded-md border border-white/10 bg-obsidian/70 p-5">
-      <div className="mb-5 flex items-center gap-3">
-        <Icon className="h-5 w-5 text-gold" />
-        <h2 className="text-2xl font-black text-parchment">{title}</h2>
-      </div>
-      <div className="space-y-4">{children}</div>
-    </section>
-  );
-}
-
-function Metric({ icon: Icon, label, value }: { icon: typeof Network; label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-white/10 bg-black/25 p-4">
-      <Icon className="mb-3 h-5 w-5 text-gold" />
-      <p className="text-xs uppercase text-stone">{label}</p>
-      <p className="mt-1 truncate text-sm font-bold text-parchment">{value}</p>
-    </div>
-  );
-}
-
-function TextInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return (
-    <label className="block">
-      <span className="text-xs uppercase text-stone">{label}</span>
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-2 w-full rounded-md border border-white/10 bg-black/25 px-3 py-3 text-sm text-parchment outline-none focus:border-gold"
-      />
-    </label>
-  );
-}
-
-function TextArea({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return (
-    <label className="block">
-      <span className="text-xs uppercase text-stone">{label}</span>
-      <textarea
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-2 min-h-32 w-full rounded-md border border-white/10 bg-black/25 px-3 py-3 text-sm text-parchment outline-none focus:border-gold"
-      />
-    </label>
-  );
-}
-
-function ActionButton({ onClick, busy, label }: { onClick: () => void; busy: boolean; label: string }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={busy}
-      className="inline-flex items-center gap-2 rounded-md bg-gold px-4 py-3 text-sm font-bold text-obsidian disabled:opacity-60"
-    >
-      {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-      {label}
-    </button>
-  );
-}
-
-function StateRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="border-b border-white/10 py-3 last:border-b-0">
-      <p className="text-xs uppercase text-stone">{label}</p>
-      <p className="mt-1 break-all font-mono text-xs text-parchment">{value}</p>
-    </div>
-  );
-}
-
-function OutputCard({ title, value }: { title: string; value: string }) {
-  return (
-    <div className="rounded-md border border-white/10 bg-black/25 p-4">
-      <p className="text-xs uppercase text-stone">{title}</p>
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-parchment">{value}</p>
-    </div>
-  );
-}
-
-function IntegrationList({ integration }: { integration: RuntimeIntegration | null }) {
-  if (!integration) {
-    return (
-      <p className="text-xs leading-5 text-stone">
-        Deploy the runtime to verify Telegram, Discord, and WeatherXM bindings.
-      </p>
-    );
-  }
-
-  const items = [
-    `Telegram token: ${integration.telegramConfigured ? "configured" : "missing"}`,
-    `Telegram target chat: ${integration.telegramChatBound ? "bound" : "not bound"}`,
-    `Discord token/app: ${integration.discordConfigured ? "configured" : "missing"}`,
-    `Discord guild: ${integration.discordGuildBound ? "bound" : "not bound"}`,
-    `Discord channel: ${integration.discordChannelBound ? "bound" : "not bound"}`,
-    `WeatherXM API: ${integration.depinBaseUrl}`,
-  ];
-
-  return (
-    <div className="rounded-md border border-white/10 bg-black/25 p-4">
-      <p className="text-xs uppercase text-stone">Integration status</p>
-      <div className="mt-3 space-y-2">
-        {items.map((item) => (
-          <p key={item} className="text-sm text-parchment">
-            {item}
-          </p>
-        ))}
-      </div>
-    </div>
   );
 }

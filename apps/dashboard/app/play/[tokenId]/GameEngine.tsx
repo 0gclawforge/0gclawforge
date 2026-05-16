@@ -48,7 +48,7 @@ const MAP_SIZE = 16;
 const PLAYER_SPAWN = { x: 8, y: 14 };
 const EMPTY_TILE: Tile = { type: "floor", icon: "", passable: true };
 const AUTONOMOUS_MODEL_NAME = "0GM-1.0-35B-A3B";
-const AUTO_WORLD_INTERVAL_MS = 7_000;
+const AUTO_WORLD_INTERVAL_MS = 2_000;
 const AUTO_DIRECTIVE_INTERVAL_MS = 35_000;
 
 const themes: Record<BiomeTheme["id"], BiomeTheme> = {
@@ -400,6 +400,104 @@ function canAutonomyOccupy(tile: Tile) {
   return tile.type === "floor" || tile.type === "decoration";
 }
 
+function tileDistance(a: { x: number; y: number }, b: { x: number; y: number }) {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+function findAutonomousPlayerTarget(grid: Tile[][], state: GameState) {
+  const remainingObjectives = findTilePositions(
+    grid,
+    (tile) =>
+      (tile.type === "artifact" && !state.inventory.some((item) => item.name === tile.asset?.name)) ||
+      (tile.type === "quest" && !state.questsCompleted.includes(tile.asset?.name ?? "")) ||
+      (tile.type === "npc" && !state.npcsSpoken.includes(tile.asset?.name ?? ""))
+  );
+
+  const priorities = state.bossDefeated
+    ? ["exit"]
+    : remainingObjectives.length > 0
+      ? ["artifact", "quest", "npc"]
+      : ["boss"];
+
+  for (const type of priorities) {
+    const candidates = findTilePositions(grid, (tile) => {
+      if (tile.type !== type) return false;
+      if (tile.type === "artifact") return !state.inventory.some((item) => item.name === tile.asset?.name);
+      if (tile.type === "quest") return !state.questsCompleted.includes(tile.asset?.name ?? "");
+      if (tile.type === "npc") return !state.npcsSpoken.includes(tile.asset?.name ?? "");
+      return true;
+    }).sort((a, b) => tileDistance(state.playerPos, a) - tileDistance(state.playerPos, b));
+
+    if (candidates[0]) return candidates[0];
+  }
+
+  const fallback = findTilePositions(grid, (tile) => tile.type === "npc" || tile.type === "decoration").sort(
+    (a, b) => tileDistance(state.playerPos, a) - tileDistance(state.playerPos, b)
+  )[0];
+
+  if (fallback) return fallback;
+  return null;
+}
+
+function findAutonomousStep(grid: Tile[][], from: { x: number; y: number }, to: { x: number; y: number }) {
+  if (from.x === to.x && from.y === to.y) return from;
+
+  const directions = [
+    { x: 0, y: -1 },
+    { x: 1, y: 0 },
+    { x: 0, y: 1 },
+    { x: -1, y: 0 },
+  ];
+  const key = (pos: { x: number; y: number }) => `${pos.x},${pos.y}`;
+  const queue = [from];
+  const visited = new Set([key(from)]);
+  const parent = new Map<string, { x: number; y: number }>();
+
+  for (let index = 0; index < queue.length; index++) {
+    const current = queue[index];
+    for (const direction of directions) {
+      const next = { x: current.x + direction.x, y: current.y + direction.y };
+      const tile = grid[next.y]?.[next.x];
+      if (!tile || !tile.passable || visited.has(key(next))) continue;
+
+      visited.add(key(next));
+      parent.set(key(next), current);
+      if (next.x === to.x && next.y === to.y) {
+        let cursor = next;
+        while (true) {
+          const previous = parent.get(key(cursor));
+          if (!previous || (previous.x === from.x && previous.y === from.y)) return cursor;
+          cursor = previous;
+        }
+      }
+      queue.push(next);
+    }
+  }
+
+  return null;
+}
+
+function findAutonomousWanderStep(grid: Tile[][], from: { x: number; y: number }, tick: number) {
+  const directions = [
+    { x: 0, y: -1 },
+    { x: 1, y: 0 },
+    { x: 0, y: 1 },
+    { x: -1, y: 0 },
+  ];
+  const ordered = directions.slice(tick % directions.length).concat(directions.slice(0, tick % directions.length));
+  return ordered
+    .map((direction) => ({ x: from.x + direction.x, y: from.y + direction.y }))
+    .find((position) => Boolean(grid[position.y]?.[position.x]?.passable));
+}
+
+function describeAutoTarget(tile: Tile, theme: BiomeTheme) {
+  if (tile.asset?.name) return tile.asset.name;
+  if (tile.type === "boss") return theme.bossName;
+  if (tile.type === "exit") return "the realm exit";
+  if (tile.type === "npc") return "a realm NPC";
+  return "the next open tile";
+}
+
 function autonomousQuestAsset(realm: RealmPayload, theme: BiomeTheme, index: number): RealmAsset {
   const names = ["Signal Patrol", "Memory Relay", "Border Rite", "Artifact Census", "Warden Errand"];
   const name = `${theme.name} ${names[index % names.length]} ${index + 1}`;
@@ -467,6 +565,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
   const themeRef = useRef<BiomeTheme>(themes.default);
   const completedRef = useRef(false);
   const autoPulseRef = useRef("Idle");
+  const bossHpRef = useRef(0);
 
   const clanState = normalizeClanState(chainStateData) ?? apiClanState;
   const realmPayload = realm?.payload ?? null;
@@ -499,6 +598,10 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
   useEffect(() => {
     autoPulseRef.current = autoPulse;
   }, [autoPulse]);
+
+  useEffect(() => {
+    bossHpRef.current = bossHp;
+  }, [bossHp]);
 
   useEffect(() => {
     let cancelled = false;
@@ -806,6 +909,175 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
     autoTickRef.current += 1;
     const nextGrid = cloneGrid(currentGrid);
     const player = currentGameState.playerPos;
+    const playerTarget = findAutonomousPlayerTarget(nextGrid, currentGameState);
+    const playerStep = playerTarget ? findAutonomousStep(nextGrid, player, playerTarget) : null;
+    const wanderStep = playerStep ? null : findAutonomousWanderStep(nextGrid, player, autoTickRef.current);
+    const activeStep = playerStep ?? wanderStep;
+    const activeTarget =
+      playerTarget && playerStep
+        ? playerTarget
+        : activeStep
+          ? { x: activeStep.x, y: activeStep.y, tile: nextGrid[activeStep.y]?.[activeStep.x] ?? EMPTY_TILE }
+          : null;
+
+    if (activeTarget && activeStep) {
+      let gridAfter = nextGrid;
+      let stateAfter: GameState = { ...currentGameState, playerPos: activeStep };
+      let pulse = playerStep
+        ? `Clan pilot moves toward ${describeAutoTarget(activeTarget.tile, currentTheme)} at (${activeStep.x}, ${activeStep.y}).`
+        : `Clan pilot scouts the realm at (${activeStep.x}, ${activeStep.y}).`;
+      const arrived = activeStep.x === activeTarget.x && activeStep.y === activeTarget.y;
+      const tile = gridAfter[activeStep.y]?.[activeStep.x];
+
+      if (arrived && tile) {
+        if (tile.type === "artifact" && tile.asset) {
+          const artifact = tile.asset;
+          if (!stateAfter.inventory.some((item) => item.name === artifact.name)) {
+            stateAfter = applyRewards(
+              {
+                ...stateAfter,
+                inventory: [...stateAfter.inventory, { name: artifact.name, description: artifact.description, type: artifact.type }],
+              },
+              15,
+              0,
+              [`Autonomous pilot collected ${artifact.name}.`]
+            );
+          }
+          gridAfter = updateTile(gridAfter, activeStep.x, activeStep.y, { ...EMPTY_TILE });
+          pulse = `Collected artifact: ${artifact.name}`;
+        } else if (tile.type === "quest" && tile.asset) {
+          const quest = tile.asset;
+          const roll = rollDie(20);
+          const total = roll + stateAfter.level;
+          if (total >= 10) {
+            if (!stateAfter.questsCompleted.includes(quest.name)) {
+              stateAfter = applyRewards(
+                { ...stateAfter, questsCompleted: [...stateAfter.questsCompleted, quest.name] },
+                quest.description.includes(AUTONOMOUS_MODEL_NAME) ? 12 : 25,
+                quest.description.includes(AUTONOMOUS_MODEL_NAME) ? 6 : 20,
+                [`Autonomous pilot completed "${quest.name}". Roll ${roll} + level ${stateAfter.level} = ${total}.`]
+              );
+            }
+            gridAfter = updateTile(gridAfter, activeStep.x, activeStep.y, { ...EMPTY_TILE });
+            pulse = `Completed quest: ${quest.name}`;
+          } else {
+            stateAfter = {
+              ...stateAfter,
+              hp: Math.max(1, stateAfter.hp - 6),
+              gameLog: appendLog(
+                stateAfter.gameLog,
+                `Autonomous pilot tested "${quest.name}" but failed. Roll ${roll} + level ${stateAfter.level} = ${total}.`
+              ),
+            };
+            pulse = `Quest attempt failed: ${quest.name}`;
+          }
+        } else if (tile.type === "npc" && tile.asset) {
+          const npc = tile.asset;
+          if (!stateAfter.npcsSpoken.includes(npc.name)) {
+            stateAfter = applyRewards(
+              { ...stateAfter, npcsSpoken: [...stateAfter.npcsSpoken, npc.name] },
+              10,
+              0,
+              [`Autonomous pilot asked ${npc.name} for a route clue.`]
+            );
+          } else {
+            stateAfter = { ...stateAfter, gameLog: appendLog(stateAfter.gameLog, `Autonomous pilot checks in with ${npc.name}.`) };
+          }
+          pulse = `Spoke with NPC: ${npc.name}`;
+        } else if (tile.type === "boss") {
+          const currentBossHp = bossHpRef.current || bossMaxHp(currentRealm);
+          if (stateAfter.hp < 35) {
+            stateAfter = {
+              ...stateAfter,
+              gameLog: appendLog(stateAfter.gameLog, `Autonomous pilot scouts ${currentTheme.bossName} and waits for more HP.`),
+            };
+            pulse = `Scouting boss: ${currentTheme.bossName}`;
+          } else {
+            const roll = rollDie(20);
+            const total = roll + stateAfter.level;
+            const hit = total >= 8;
+            const damage = hit ? 8 + rollDie(8) + stateAfter.level * 2 : 0;
+            const nextBossHp = Math.max(0, currentBossHp - damage);
+
+            if (nextBossHp <= 0) {
+              const trophy = {
+                name: "Boss Trophy",
+                description: `A victory mark from ${currentTheme.bossName}.`,
+                type: "artifact",
+              };
+              bossHpRef.current = 0;
+              setBossHp(0);
+              gridAfter = placeExit(updateTile(gridAfter, activeStep.x, activeStep.y, { ...EMPTY_TILE }));
+              stateAfter = applyRewards(
+                {
+                  ...stateAfter,
+                  bossDefeated: true,
+                  inventory: stateAfter.inventory.some((item) => item.name === trophy.name)
+                    ? stateAfter.inventory
+                    : [...stateAfter.inventory, trophy],
+                },
+                100,
+                50,
+                [`Autonomous pilot defeated ${currentTheme.bossName}. The exit opens near the north gate.`]
+              );
+              setToast("Autonomous clan defeated the boss. Exit opened.");
+              pulse = `Boss defeated: ${currentTheme.bossName}`;
+            } else {
+              const bossDamage = 3 + rollDie(6) + Math.max(0, Math.floor((currentRealm.assets.length - 2) / 3));
+              const nextHp = stateAfter.hp - bossDamage;
+              bossHpRef.current = nextBossHp;
+              setBossHp(nextBossHp);
+
+              if (nextHp <= 0) {
+                bossHpRef.current = bossMaxHp(currentRealm);
+                setBossHp(bossMaxHp(currentRealm));
+                stateAfter = {
+                  ...stateAfter,
+                  hp: stateAfter.maxHp,
+                  gold: Math.floor(stateAfter.gold / 2),
+                  playerPos: realmSpawn(currentRealm),
+                  gameLog: appendLog(
+                    stateAfter.gameLog,
+                    `Autonomous pilot was defeated by ${currentTheme.bossName} and respawned at the realm gate.`
+                  ),
+                };
+                pulse = `Respawned after boss defeat`;
+              } else {
+                stateAfter = {
+                  ...stateAfter,
+                  hp: nextHp,
+                  gameLog: appendLog(
+                    stateAfter.gameLog,
+                    hit
+                      ? `Autonomous pilot hit ${currentTheme.bossName} for ${damage}; counterattack dealt ${bossDamage}.`
+                      : `Autonomous pilot missed ${currentTheme.bossName}; counterattack dealt ${bossDamage}.`
+                  ),
+                };
+                pulse = `Boss exchange: ${nextBossHp}/${bossMaxHp(currentRealm)} HP remains`;
+              }
+            }
+          }
+        } else if (tile.type === "exit") {
+          stateAfter = { ...stateAfter, gameLog: appendLog(stateAfter.gameLog, "Autonomous pilot reached the realm exit.") };
+          completedRef.current = true;
+          setCompleted(true);
+          pulse = "Realm exit reached";
+        } else {
+          stateAfter = { ...stateAfter, gameLog: appendLog(stateAfter.gameLog, pulse) };
+        }
+      } else {
+        stateAfter = { ...stateAfter, gameLog: appendLog(stateAfter.gameLog, pulse) };
+      }
+
+      gridRef.current = gridAfter;
+      gameStateRef.current = stateAfter;
+      setGrid(gridAfter);
+      setGameState(stateAfter);
+      setAutoPulse(pulse);
+      pushAutoLog(pulse);
+      return;
+    }
+
     const autonomousQuestPositions = findTilePositions(
       nextGrid,
       (tile) => tile.type === "quest" && Boolean(tile.asset?.description.includes(AUTONOMOUS_MODEL_NAME))
@@ -1095,7 +1367,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
     <main className="min-h-[calc(100vh-4rem)] overflow-x-hidden px-4 py-6 pb-10 sm:px-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-7xl space-y-5">
         <header className="flex flex-col gap-4 rounded-md border border-white/10 bg-white/[0.03] p-5 md:flex-row md:items-center md:justify-between">
-          <a href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-stone transition hover:text-parchment">
+          <a href="/app" className="inline-flex items-center gap-2 text-sm font-semibold text-stone transition hover:text-parchment">
             <ArrowLeft className="h-4 w-4" />
             Back to Dashboard
           </a>
@@ -1299,8 +1571,8 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
             <Panel title="Autonomous Clan" icon={Bot}>
               <p className="text-sm leading-6 text-stone">
                 {autoMode
-                  ? "The clan is acting on its own: NPCs patrol, micro-quests resolve, and realm tiles shift while 0G Compute supplies periodic direction."
-                  : "Let the clan act without taking over your player. World changes run locally with 0G Compute directives when available."}
+                  ? "The clan is piloting the run: the player avatar moves, NPCs patrol, quests resolve, artifacts are collected, and realm tiles shift while 0G Compute supplies periodic direction."
+                  : "Let the clan play while you watch. The local pilot keeps moving even when mainnet Compute is catching up, then folds in 0G Compute directives when available."}
               </p>
               <StateRow label="Model" value={AUTONOMOUS_MODEL_NAME} />
               <StateRow label="Pulse" value={autoPulse} />

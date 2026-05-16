@@ -123,6 +123,30 @@ A live Telegram bot that connects directly to the clan runtime for real-time gov
 | Explorer | `https://chainscan-galileo.0g.ai` |
 | Chain ID | `16602` |
 
+## 0G Mainnet Endpoints
+
+| Endpoint | URL |
+|---|---|
+| RPC | `https://evmrpc.0g.ai` |
+| Storage Indexer (Turbo) | `https://indexer-storage-turbo.0g.ai` |
+| Explorer | `https://chainscan.0g.ai` |
+| Chain ID | `16661` |
+
+### Mainnet Contract Addresses
+
+| Contract | Address |
+|---|---|
+| AgentINFT (ERC-7857) | [`0x6ed8b09371e133dab2AC87Da81615D3152092E3A`](https://chainscan.0g.ai/address/0x6ed8b09371e133dab2ac87da81615d3152092e3a) |
+| AgentMarketplace | [`0xd41C837e0c91024b41A2F456DF4100d0c964bBb1`](https://chainscan.0g.ai/address/0xd41c837e0c91024b41a2f456df4100d0c964bbb1) |
+
+### Testnet Contract Addresses (Galileo)
+
+| Contract | Address |
+|---|---|
+| AgentINFT (ERC-7857) | [`0x0FB5eBd1821d644E1faba9608255E30b3c44a6ba`](https://chainscan-galileo.0g.ai/address/0x0FB5eBd1821d644E1faba9608255E30b3c44a6ba) |
+| AgentMarketplace | [`0xF2f6C9AD336efAe3Af7CA54A0a585DBC00Bbfa09`](https://chainscan-galileo.0g.ai/address/0xF2f6C9AD336efAe3Af7CA54A0a585DBC00Bbfa09) |
+| AgentRegistry | [`0x0D1b3222A7c39E9087c108dFF10648657852D05F`](https://chainscan-galileo.0g.ai/address/0x0D1b3222A7c39E9087c108dFF10648657852D05F) |
+
 ## Quick Start (Local Dev)
 
 ```bash

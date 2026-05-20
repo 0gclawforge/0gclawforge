@@ -1,10 +1,10 @@
-export * from "./types.js";
-export { resolveFoundryEnv, foundryNetworks } from "./env.js";
-export { FoundryStorage } from "./storage.js";
-export { FoundryCompute } from "./compute.js";
-export type { FoundryInferenceOptions, FoundryInferenceResult } from "./compute.js";
-export { ClanDA } from "./da.js";
-export type { ClanDAConfig } from "./da.js";
+export * from "./types";
+export { resolveFoundryEnv, foundryNetworks } from "./env";
+export { FoundryStorage } from "./storage";
+export { FoundryCompute } from "./compute";
+export type { FoundryInferenceOptions, FoundryInferenceResult } from "./compute";
+export { ClanDA } from "./da";
+export type { ClanDAConfig } from "./da";
 export {
   buildClanAttestation,
   signClanAttestation,
@@ -15,16 +15,16 @@ export {
   digestEnvelope,
   parseEnvelope,
   recoverSigner,
-} from "./attestation.js";
+} from "./attestation";
 export type {
   AttestationEnvelope,
   SignedEnvelope,
   VerifyResult,
   BuildClanAttestationParams,
-} from "./attestation.js";
-export { anchorQuestOutcome } from "./quest.js";
+} from "./attestation";
+export { anchorQuestOutcome } from "./quest";
 export type {
   AnchorQuestOptions,
   AnchorQuestResult,
   QuestOutcomePayload,
-} from "./quest.js";
+} from "./quest";

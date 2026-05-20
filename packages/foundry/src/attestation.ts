@@ -10,7 +10,7 @@ import {
   type VerifyResult,
 } from "@foundryprotocol/0gkit-attestation";
 import type { Address, Hex } from "viem";
-import type { ClanEventEnvelope } from "./types.js";
+import type { ClanEventEnvelope } from "./types";
 import { canonicalJsonStringify, digestJson } from "@foundryprotocol/0gkit-core";
 
 export type {

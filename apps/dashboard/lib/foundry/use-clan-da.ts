@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import {
-  ClanDA,
-  type ClanDigestPublishResult,
-  type ClanEventEnvelope,
-  type ClanEventKind,
-} from "@0gclawforge/foundry";
+import { ClanDA } from "@0gclawforge/foundry/da";
+import type {
+  ClanDigestPublishResult,
+  ClanEventEnvelope,
+  ClanEventKind,
+} from "@0gclawforge/foundry/types";
 
 export interface UseClanDAState {
   envelope?: ClanEventEnvelope & { canonical: string; digest: `0x${string}` };

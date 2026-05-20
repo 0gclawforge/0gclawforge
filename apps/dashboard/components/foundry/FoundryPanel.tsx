@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useClanDA } from "../../lib/foundry/use-clan-da";
 import { foundryEnvFromBrowser, clanEventEnvelope } from "../../lib/foundry";
-import type { ClanEventKind } from "@0gclawforge/foundry";
+import type { ClanEventKind } from "@0gclawforge/foundry/types";
 
 /**
  * Foundry panel — embedded inside the dashboard to demonstrate clan event

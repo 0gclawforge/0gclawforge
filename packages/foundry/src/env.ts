@@ -1,5 +1,5 @@
 import { networks, getNetwork } from "@foundryprotocol/0gkit-core";
-import type { FoundryEnv, FoundryNetwork } from "./types.js";
+import type { FoundryEnv, FoundryNetwork } from "./types";
 
 /**
  * Resolve a FoundryEnv from process.env + an optional override. Reads the

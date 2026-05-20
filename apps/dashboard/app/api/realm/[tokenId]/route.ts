@@ -1,9 +1,6 @@
-import { readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
-import { agentInftAbi, downloadFromStorage, uploadJSON } from "@0gclawforge/sdk";
+import { agentInftAbi, downloadJSON, uploadJSON } from "@0gclawforge/sdk";
 import type { StorageConfig } from "@0gclawforge/sdk";
 import { getAgentInftAddress, getOgRpcUrl, getOgStorageIndexer } from "../../../../lib/contract-addresses";
 
@@ -177,26 +174,15 @@ function normalizeRealmRecord(record: any, tokenId: string, version: number) {
   };
 }
 
-async function downloadRealmRecord(rootHash: string, tokenId: string, chainId: number) {
-  const tmpPath = join(tmpdir(), `0gclawforge-realm-${tokenId}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
+async function downloadRealmRecord(rootHash: string, _tokenId: string, chainId: number): Promise<any> {
   try {
-    await downloadFromStorage(rootHash, tmpPath, getStorageConfig(chainId, false));
-    return JSON.parse(await readFile(tmpPath, "utf8"));
+    return await downloadJSON(rootHash, getStorageConfig(chainId, false));
   } catch (err) {
-    // Realm may have been uploaded on a different network's storage indexer — try testnet fallback
+    // Realm may have been uploaded on a different network's storage indexer — try testnet fallback.
     if (chainId !== 16602) {
-      await rm(tmpPath, { force: true });
-      const fallbackPath = join(tmpdir(), `0gclawforge-realm-${tokenId}-fb-${Date.now()}.json`);
-      try {
-        await downloadFromStorage(rootHash, fallbackPath, getStorageConfig(16602, false));
-        return JSON.parse(await readFile(fallbackPath, "utf8"));
-      } finally {
-        await rm(fallbackPath, { force: true });
-      }
+      return await downloadJSON(rootHash, getStorageConfig(16602, false));
     }
     throw err;
-  } finally {
-    await rm(tmpPath, { force: true });
   }
 }
 

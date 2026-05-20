@@ -5,8 +5,8 @@ import type {
   ClanDigestPublishResult,
   ClanEventEnvelope,
   ClanEventKind,
-} from "./types.js";
-import { resolveFoundryEnv } from "./env.js";
+} from "./types";
+import { resolveFoundryEnv } from "./env";
 
 export interface ClanDAConfig {
   /** Network preset name. Defaults to galileo unless OG_CHAIN_ID = 16661. */

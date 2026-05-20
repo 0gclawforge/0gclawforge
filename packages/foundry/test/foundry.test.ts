@@ -1,14 +1,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { ethers } from "ethers";
+import { ClanDA } from "../src/da";
 import {
-  ClanDA,
   buildClanAttestation,
   signClanAttestation,
   verifyClanAttestation,
   clanEventDigest,
   canonicalClanEvent,
-} from "../src/index.js";
+} from "../src/attestation";
 import { canonicalJsonStringify, digestJson } from "@foundryprotocol/0gkit-core";
 
 const PRIVATE_KEY = "0x4c0883a69102937d6231471b5dbb6204fe512961708279f2e3e8a5d4b8e60003";

@@ -1,6 +1,6 @@
 import { Compute as KitCompute, type ChatMessage } from "@foundryprotocol/0gkit-compute";
-import type { ClawForgeComputeConfig } from "./types.js";
-import { resolveFoundryEnv } from "./env.js";
+import type { ClawForgeComputeConfig } from "./types";
+import { resolveFoundryEnv } from "./env";
 
 export interface FoundryInferenceOptions {
   systemPrompt?: string;

@@ -1,14 +1,14 @@
 import { ethers } from "ethers";
 import { agentInftAbi } from "@0gclawforge/sdk";
 import type { Address, Hex } from "viem";
-import { ClanDA } from "./da.js";
+import { ClanDA } from "./da";
 import {
   buildClanAttestation,
   signClanAttestation,
   type SignedEnvelope,
-} from "./attestation.js";
-import type { ClanDigestPublishResult, ClanEventEnvelope } from "./types.js";
-import { resolveFoundryEnv } from "./env.js";
+} from "./attestation";
+import type { ClanDigestPublishResult, ClanEventEnvelope } from "./types";
+import { resolveFoundryEnv } from "./env";
 
 export interface QuestOutcomePayload {
   prompt: string;

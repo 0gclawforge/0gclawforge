@@ -1,6 +1,6 @@
 import { Storage as KitStorage } from "@foundryprotocol/0gkit-storage";
-import type { ClawForgeStorageConfig } from "./types.js";
-import { resolveFoundryEnv } from "./env.js";
+import type { ClawForgeStorageConfig } from "./types";
+import { resolveFoundryEnv } from "./env";
 
 /**
  * Drop-in 0G Storage client built on @foundryprotocol/0gkit-storage. Accepts

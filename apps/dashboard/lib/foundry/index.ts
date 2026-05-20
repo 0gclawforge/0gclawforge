@@ -14,16 +14,18 @@
  *   - `publishClanEventClient()`: client-side DA publish, used by the
  *     FoundryPanel component to anchor a quest/vote without server round-trip.
  */
+import { ClanDA } from "@0gclawforge/foundry/da";
 import {
-  ClanDA,
   buildClanAttestation,
   canonicalClanEvent,
   clanEventDigest,
-  resolveFoundryEnv,
-  type ClanEventEnvelope,
-  type ClanEventKind,
-  type FoundryEnv,
-} from "@0gclawforge/foundry";
+} from "@0gclawforge/foundry/attestation";
+import { resolveFoundryEnv } from "@0gclawforge/foundry/env";
+import type {
+  ClanEventEnvelope,
+  ClanEventKind,
+  FoundryEnv,
+} from "@0gclawforge/foundry/types";
 
 export function foundryEnvFromBrowser(): FoundryEnv {
   const overrides: Partial<FoundryEnv> = {};

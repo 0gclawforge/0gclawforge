@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@0gclawforge/agents": "workspace:*",
+    "@0gclawforge/foundry": "workspace:*",
     "@0gclawforge/sdk": "workspace:*",
     "@0gclawforge/shared": "workspace:*",
     "@rainbow-me/rainbowkit": "^2.2.11",

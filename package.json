@@ -14,10 +14,15 @@
     "autonomy:build": "pnpm --filter @0gclawforge/agents build",
     "deploy:testnet": "pnpm --filter @0gclawforge/contracts run deploy:testnet",
     "deploy:mainnet": "pnpm --filter @0gclawforge/contracts run deploy:mainnet",
-    "verify:contracts": "pnpm --filter @0gclawforge/contracts run verify:contracts"
+    "verify:contracts": "pnpm --filter @0gclawforge/contracts run verify:contracts",
+    "foundry:build": "pnpm --filter @0gclawforge/foundry build && pnpm --filter @0gclawforge/mcp build",
+    "foundry:mcp": "pnpm --filter @0gclawforge/mcp dev",
+    "foundry:anchor": "pnpm dlx tsx scripts/foundry/anchor-quest.ts",
+    "foundry:inspect": "pnpm dlx tsx scripts/foundry/inspect-clan.ts"
   },
   "devDependencies": {
     "turbo": "^2.0.0",
+    "tsx": "^4.7.0",
     "typescript": "^5.4.0"
   }
 }

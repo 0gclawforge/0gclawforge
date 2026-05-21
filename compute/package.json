@@ -10,7 +10,11 @@
     "test": "tsc --noEmit"
   },
   "dependencies": {
-    "@0gclawforge/sdk": "workspace:*"
+    "@0gclawforge/foundry": "workspace:*",
+    "@0gclawforge/sdk": "workspace:*",
+    "@foundryprotocol/0gkit-attestation": "^0.1.0",
+    "ethers": "^6.11.0",
+    "viem": "^2.21.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0"

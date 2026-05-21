@@ -8,7 +8,7 @@ import { type Address } from "viem";
 import { useAccount, useChainId, usePublicClient } from "wagmi";
 import { agentInftAbi } from "@0gclawforge/sdk/inft";
 import { getAgentInftAddress } from "../../lib/contract-addresses";
-import type { ClanState, RealmApiResponse, RealmRecord } from "./[tokenId]/types";
+import type { ClanState, LeaderboardResponse, RealmApiResponse, RealmRecord } from "./[tokenId]/types";
 
 interface PlayableRealm {
   tokenId: string;
@@ -68,8 +68,10 @@ export default function PlayDiscoveryPage() {
   const { address, isConnected } = useAccount();
   const [tokenSearch, setTokenSearch] = useState("");
   const [realms, setRealms] = useState<PlayableRealm[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardResponse["entries"]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
+  const [leaderboardStatus, setLeaderboardStatus] = useState("");
 
   const contractAddress = useMemo(() => {
     return getAgentInftAddress(chainId) as Address;
@@ -160,6 +162,31 @@ export default function PlayDiscoveryPage() {
     };
   }, [address, chainId, contractAddress, publicClient]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLeaderboard() {
+      try {
+        const response = await fetch("/api/realm/leaderboard", { cache: "no-store" });
+        const payload = (await response.json()) as LeaderboardResponse & { error?: string };
+        if (!response.ok) throw new Error(payload.error || "Failed to load leaderboard");
+        if (!cancelled) {
+          setLeaderboard(payload.entries ?? []);
+          setLeaderboardStatus("");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLeaderboardStatus(error instanceof Error ? error.message : "Failed to load leaderboard");
+        }
+      }
+    }
+
+    void loadLeaderboard();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const enterToken = () => {
     const trimmed = tokenSearch.trim();
     if (!/^\d+$/.test(trimmed)) {
@@ -239,6 +266,40 @@ export default function PlayDiscoveryPage() {
                     </a>
                   </div>
                 </motion.article>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-md border border-white/10 bg-white/[0.03] p-5">
+          <div className="mb-5 flex items-center gap-3">
+            <Sparkles className="h-5 w-5 text-gold" />
+            <h2 className="text-2xl font-black text-parchment">Dungeon XP Leaderboard</h2>
+          </div>
+          {leaderboardStatus ? (
+            <div className="rounded-md border border-white/10 bg-black/25 p-4 text-sm text-parchment">{leaderboardStatus}</div>
+          ) : leaderboard.length === 0 ? (
+            <div className="rounded-md border border-white/10 bg-black/25 p-4 text-sm text-stone">
+              No dungeon XP has been saved yet.
+            </div>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {leaderboard.slice(0, 9).map((entry, index) => (
+                <article key={entry.tokenId} className="rounded-md border border-white/10 bg-black/25 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="rounded bg-gold/10 px-2 py-1 font-mono text-xs text-gold">#{index + 1}</span>
+                    <span className="font-mono text-xs text-gold">{entry.totalXpEarned} XP</span>
+                  </div>
+                  <h3 className="mt-3 text-lg font-black text-parchment">Clan #{entry.tokenId}</h3>
+                  <p className="mt-1 line-clamp-2 text-sm text-stone">{entry.clanTitle}</p>
+                  <p className="mt-3 text-xs uppercase tracking-[0.18em] text-stone">
+                    Best run {entry.highestRunXp} • Clears {entry.completedRuns} • Boss kills {entry.bossKills}
+                  </p>
+                  <a href={`/play/${entry.tokenId}`} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-gold px-4 py-2 text-sm font-semibold text-obsidian">
+                    Enter Realm
+                    <ArrowRight className="h-4 w-4" />
+                  </a>
+                </article>
               ))}
             </div>
           )}

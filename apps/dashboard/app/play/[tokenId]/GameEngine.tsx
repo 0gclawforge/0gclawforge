@@ -35,9 +35,12 @@ import type {
   ClanState,
   EncounterModal,
   GameState,
+  LeaderboardEntry,
+  LeaderboardResponse,
   RealmApiResponse,
   RealmAsset,
   RealmPayload,
+  RealmTrialQuestion,
   RealmRecord,
   RealmVersionSummary,
   SaveProgressPayload,
@@ -50,6 +53,15 @@ const EMPTY_TILE: Tile = { type: "floor", icon: "", passable: true };
 const AUTONOMOUS_MODEL_NAME = "0GM-1.0-35B-A3B";
 const AUTO_WORLD_INTERVAL_MS = 2_000;
 const AUTO_DIRECTIVE_INTERVAL_MS = 35_000;
+const QUEST_DC = 15;
+const BOSS_HIT_DC = 11;
+const MOVE_HAZARD_CHANCE = 0.18;
+const PRISM_MEMORIES_REQUIRED = 3;
+const MEMORY_SEAL_COUNT = 3;
+
+function createRunSessionId() {
+  return `run-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 const themes: Record<BiomeTheme["id"], BiomeTheme> = {
   forest: {
@@ -290,7 +302,7 @@ function generateMap(realm: RealmPayload) {
 }
 
 function bossMaxHp(realm: RealmPayload | null) {
-  return 32 + (realm?.assets.length ?? 0) * 6;
+  return 52 + (realm?.assets.length ?? 0) * 10;
 }
 
 function appendLog(current: string[], next: string | string[]) {
@@ -314,17 +326,26 @@ function applyRewards(state: GameState, xp: number, gold: number, logs: string[]
 function initialGameState(realm: RealmPayload): GameState {
   const spawn = realm.map?.spawn ?? PLAYER_SPAWN;
   return {
+    sessionId: createRunSessionId(),
     playerPos: spawn,
-    hp: 100,
-    maxHp: 100,
+    hp: 84,
+    maxHp: 84,
     gold: 0,
     xp: 0,
     level: 1,
     inventory: [],
+    prismMemories: [],
+    answeredNpcTrials: [],
+    memorySealsBroken: 0,
     questsCompleted: [],
     npcsSpoken: [],
     bossDefeated: false,
-    gameLog: appendLog([], [`You entered ${realm.title}.`, "WASD or arrow keys move one tile at a time."]),
+    gameLog: appendLog([], [
+      `You entered ${realm.title}.`,
+      "WASD or arrow keys move one tile at a time.",
+      `This realm is brutal: quests resist at DC ${QUEST_DC}, wandering can draw blood, and the boss demands a roll of ${BOSS_HIT_DC}+ to land a hit.`,
+      `The boss is sealed behind ${MEMORY_SEAL_COUNT} Memory Seals. Gather at least ${PRISM_MEMORIES_REQUIRED} Prism Memories by learning the realm.`,
+    ]),
   };
 }
 
@@ -508,6 +529,115 @@ function autonomousQuestAsset(realm: RealmPayload, theme: BiomeTheme, index: num
   };
 }
 
+function normalizeAnswerKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function shuffleOptions(options: string[], seed: number) {
+  const next = options.slice();
+  for (let i = next.length - 1; i > 0; i--) {
+    const swapIndex = (seed + i * 7) % (i + 1);
+    [next[i], next[swapIndex]] = [next[swapIndex]!, next[i]!];
+  }
+  return next;
+}
+
+function buildOptions(correctAnswer: string, distractors: string[], seedSource: string) {
+  const unique = [correctAnswer, ...distractors]
+    .filter((option, index, values) => option && values.indexOf(option) === index)
+    .slice(0, 4);
+  return shuffleOptions(unique, hashSeed(seedSource));
+}
+
+function prismMemoryItem(source: string, rewardLabel: string): { name: string; description: string; type: string } {
+  return {
+    name: `Prism Memory: ${rewardLabel}`,
+    description: `A sealed memory shard won through ${source}. The boss can consume it to break a Memory Seal.`,
+    type: "prism-memory",
+  };
+}
+
+function buildNpcTrialQuestion(realm: RealmPayload, asset: RealmAsset): RealmTrialQuestion {
+  const quests = realm.assets.filter((item) => item.type === "quest");
+  const artifacts = realm.assets.filter((item) => item.type === "artifact");
+  const npcs = realm.assets.filter((item) => item.type === "npc");
+  const biome = realm.assets.find((item) => item.type === "biome");
+  const seed = `${realm.tokenId}:${asset.name}`;
+  const npcIndex = Math.max(0, npcs.findIndex((item) => item.name === asset.name));
+
+  if (quests[npcIndex % Math.max(1, quests.length)]) {
+    const correct = quests[npcIndex % Math.max(1, quests.length)]!;
+    const distractors = [...artifacts, ...npcs.filter((item) => item.name !== asset.name)]
+      .map((item) => item.name)
+      .slice(0, 3);
+    return {
+      id: `npc-trial-${asset.name}`,
+      prompt: `${asset.name} tests your memory: which quest is truly bound to ${realm.title}?`,
+      options: buildOptions(correct.name, distractors, seed),
+      correctAnswer: correct.name,
+      loreHint: cleanRealmHint(realm.lore || correct.description || asset.description),
+      rewardLabel: asset.name,
+    };
+  }
+
+  const correctArtifact = artifacts[0] ?? biome ?? asset;
+  const distractors = realm.assets
+    .filter((item) => item.name !== correctArtifact.name)
+    .map((item) => item.name)
+    .slice(0, 3);
+
+  return {
+    id: `npc-trial-${asset.name}`,
+    prompt: `${asset.name} asks which memory-anchor belongs in this realm's prism lattice.`,
+    options: buildOptions(correctArtifact.name, distractors, seed),
+    correctAnswer: correctArtifact.name,
+    loreHint: cleanRealmHint(realm.lore || correctArtifact.description || asset.description),
+    rewardLabel: asset.name,
+  };
+}
+
+function buildBossSealQuestion(realm: RealmPayload, sealIndex: number): RealmTrialQuestion {
+  const artifacts = realm.assets.filter((item) => item.type === "artifact");
+  const quests = realm.assets.filter((item) => item.type === "quest");
+  const npcs = realm.assets.filter((item) => item.type === "npc");
+  const biome = realm.assets.find((item) => item.type === "biome");
+  const candidates = [
+    {
+      prompt: `Seal ${sealIndex + 1}: which artifact holds the clearest memory trace in ${realm.title}?`,
+      correctAnswer: (artifacts[sealIndex % Math.max(1, artifacts.length)] ?? biome ?? realm.assets[0])?.name ?? realm.title,
+      loreHint: cleanRealmHint((artifacts[sealIndex % Math.max(1, artifacts.length)] ?? biome ?? realm.assets[0])?.description ?? realm.lore),
+    },
+    {
+      prompt: `Seal ${sealIndex + 1}: which quest best matches the realm's active oath?`,
+      correctAnswer: (quests[sealIndex % Math.max(1, quests.length)] ?? realm.assets[0])?.name ?? realm.title,
+      loreHint: cleanRealmHint((quests[sealIndex % Math.max(1, quests.length)] ?? realm.assets[0])?.description ?? realm.lore),
+    },
+    {
+      prompt: `Seal ${sealIndex + 1}: who among the realm's keepers would speak this memory aloud?`,
+      correctAnswer: (npcs[sealIndex % Math.max(1, npcs.length)] ?? realm.assets[0])?.name ?? realm.title,
+      loreHint: cleanRealmHint((npcs[sealIndex % Math.max(1, npcs.length)] ?? realm.assets[0])?.description ?? realm.lore),
+    },
+  ];
+  const chosen = candidates[sealIndex % candidates.length]!;
+  const distractors = realm.assets
+    .map((item) => item.name)
+    .filter((name) => name !== chosen.correctAnswer)
+    .slice(0, 3);
+
+  return {
+    id: `boss-seal-${sealIndex}`,
+    prompt: chosen.prompt,
+    options: buildOptions(chosen.correctAnswer, distractors, `${realm.tokenId}:boss:${sealIndex}`),
+    correctAnswer: chosen.correctAnswer,
+    loreHint: chosen.loreHint,
+    rewardLabel: `Seal ${sealIndex + 1}`,
+  };
+}
+
+function cleanRealmHint(text: string) {
+  return text.replace(/\s+/g, " ").trim().slice(0, 150);
+}
+
 export function GameEngine({ tokenId }: { tokenId: string }) {
   const searchParams = useSearchParams();
   const forcedSpectator = searchParams.get("spectator") === "1";
@@ -552,6 +682,8 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
   const [toast, setToast] = useState("");
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [leaderboardStatus, setLeaderboardStatus] = useState("");
   const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "clan"; text: string }>>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
@@ -574,6 +706,9 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
     address && ownerAddress && String(ownerAddress).toLowerCase() === address.toLowerCase()
   );
   const canPersist = isConnected && isOwner && !forcedSpectator;
+  const tokenLeaderboardEntry = leaderboard.find((entry) => entry.tokenId === tokenId) ?? null;
+  const xpProgressInLevel = gameState ? gameState.xp % 100 : 0;
+  const xpToNextLevel = gameState ? (xpProgressInLevel === 0 ? 100 : 100 - xpProgressInLevel) : 100;
 
   useEffect(() => {
     gridRef.current = grid;
@@ -640,6 +775,31 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
   }, [chainId, selectedRealmRoot, tokenId]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadLeaderboard() {
+      try {
+        const response = await fetch("/api/realm/leaderboard", { cache: "no-store" });
+        const payload = (await response.json()) as LeaderboardResponse & { error?: string };
+        if (!response.ok) throw new Error(payload.error || "Failed to load leaderboard");
+        if (!cancelled) {
+          setLeaderboard(payload.entries ?? []);
+          setLeaderboardStatus("");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLeaderboardStatus(error instanceof Error ? error.message : "Failed to load leaderboard");
+        }
+      }
+    }
+
+    void loadLeaderboard();
+    return () => {
+      cancelled = true;
+    };
+  }, [tokenId]);
+
+  useEffect(() => {
     if (!realmPayload) return;
     const generated = generateMap(realmPayload);
     setGrid(generated.grid);
@@ -682,7 +842,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
             ...state,
             inventory: [...state.inventory, asset],
           },
-          15,
+          12,
           0,
           [`Collected artifact: ${asset.name}.`]
         );
@@ -701,7 +861,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
       if (tile.type === "boss") {
         setModal({
           type: "boss",
-          result: "The boss challenges your clan. Attack to start combat. Defeating it opens the realm exit.",
+          result: `The boss is bound behind ${MEMORY_SEAL_COUNT} Memory Seals. Gather ${PRISM_MEMORIES_REQUIRED} Prism Memories, answer its memory trials, then attack for real.`,
         });
       }
       if (tile.type === "exit") setCompleted(true);
@@ -719,10 +879,32 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
         return;
       }
 
-      setGameState((state) => (state ? { ...state, playerPos: next } : state));
+      const hazardTriggered =
+        (tile.type === "floor" || tile.type === "decoration") &&
+        Math.random() < MOVE_HAZARD_CHANCE;
+      const hazardDamage = hazardTriggered ? 2 + rollDie(4) + Math.max(0, Math.floor(gameState.level / 2)) : 0;
+      const survivedHazard = !hazardTriggered || gameState.hp - hazardDamage > 0;
+
+      setGameState((state) => {
+        if (!state) return state;
+        if (!hazardTriggered) return { ...state, playerPos: next };
+        return {
+          ...state,
+          hp: survivedHazard ? state.hp - hazardDamage : state.maxHp,
+          gold: survivedHazard ? state.gold : Math.floor(state.gold * 0.7),
+          playerPos: survivedHazard ? next : realmSpawn(realmPayload),
+          gameLog: appendLog(
+            state.gameLog,
+            survivedHazard
+              ? `A roaming dungeon hazard catches you for ${hazardDamage} damage.`
+              : `A roaming dungeon hazard finishes you off. You stagger back to the gate and drop some gold.`
+          ),
+        };
+      });
+      if (!survivedHazard) return;
       triggerInteraction(tile, next.x, next.y);
     },
-    [addLog, completed, gameState, grid, modal, triggerInteraction]
+    [addLog, completed, gameState, grid, modal, realmPayload, triggerInteraction]
   );
 
   useEffect(() => {
@@ -753,8 +935,9 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
   }, [gameState, grid, movePlayer, triggerInteraction]);
 
   const talkToNpc = (asset: RealmAsset) => {
-    if (!gameState) return;
+    if (!gameState || !realmPayload) return;
     const firstConversation = !gameState.npcsSpoken.includes(asset.name);
+    const trialAlreadyClaimed = gameState.answeredNpcTrials.includes(asset.name);
     setModal((current) => (current && current.type === "npc" ? { ...current, loading: true } : current));
 
     void (async () => {
@@ -781,33 +964,153 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
             npcsSpoken: firstConversation ? [...state.npcsSpoken, asset.name] : state.npcsSpoken,
           };
           return firstConversation
-            ? applyRewards(nextState, 10, 0, [dialogue])
+            ? applyRewards(nextState, 6, 0, [dialogue])
             : { ...nextState, gameLog: appendLog(nextState.gameLog, dialogue) };
         });
         setToast(`Spoke with ${asset.name}`);
-        setModal((current) => (current && current.type === "npc" ? { ...current, loading: false, result: dialogue } : current));
+        setModal((current) => (
+          current && current.type === "npc"
+            ? {
+                ...current,
+                loading: false,
+                result: dialogue,
+                question: buildNpcTrialQuestion(realmPayload, asset),
+                trialResolved: trialAlreadyClaimed,
+                trialFeedback: trialAlreadyClaimed ? "This keeper has already entrusted you with its Prism Memory." : undefined,
+              }
+            : current
+        ));
       } catch (error) {
         const fallback = `${asset.name}: ${asset.description} I can still guide you from local realm memory while live 0G Compute catches up.`;
         addLog(fallback);
-        setModal((current) => (current && current.type === "npc" ? { ...current, loading: false, result: fallback } : current));
+        setModal((current) => (
+          current && current.type === "npc"
+            ? {
+                ...current,
+                loading: false,
+                result: fallback,
+                question: buildNpcTrialQuestion(realmPayload, asset),
+                trialResolved: trialAlreadyClaimed,
+                trialFeedback: trialAlreadyClaimed ? "This keeper has already entrusted you with its Prism Memory." : undefined,
+              }
+            : current
+        ));
       } finally {
         clearTimeout(timeout);
       }
     })();
   };
 
+  const answerNpcTrial = useCallback((asset: RealmAsset, question: RealmTrialQuestion, answer: string) => {
+    const correct = normalizeAnswerKey(answer) === normalizeAnswerKey(question.correctAnswer);
+
+    if (correct) {
+      setGameState((state) => {
+        if (!state) return state;
+        if (state.answeredNpcTrials.includes(asset.name)) {
+          return {
+            ...state,
+            gameLog: appendLog(state.gameLog, `${asset.name} confirms you already hold this memory.`),
+          };
+        }
+        const reward = prismMemoryItem(asset.name, question.rewardLabel);
+        return applyRewards(
+          {
+            ...state,
+            answeredNpcTrials: [...state.answeredNpcTrials, asset.name],
+            prismMemories: [...state.prismMemories, reward],
+            inventory: [...state.inventory, reward],
+          },
+          18,
+          8,
+          [`${asset.name} accepts your answer and gifts a Prism Memory.`]
+        );
+      });
+      setToast("Prism Memory claimed");
+      setModal((current) => (
+        current && current.type === "npc"
+          ? { ...current, trialResolved: true, trialFeedback: `Correct. ${asset.name} entrusts you with a Prism Memory.` }
+          : current
+      ));
+      return;
+    }
+
+    setGameState((state) => {
+      if (!state) return state;
+      const nextHp = Math.max(1, state.hp - 9);
+      return {
+        ...state,
+        hp: nextHp,
+        gameLog: appendLog(state.gameLog, `${asset.name} rejects your answer. The memory backlash costs 9 HP.`),
+      };
+    });
+    setModal((current) => (
+      current && current.type === "npc"
+        ? { ...current, trialFeedback: `Wrong answer. Hint: ${question.loreHint}` }
+        : current
+    ));
+  }, []);
+
+  const answerBossSealTrial = useCallback((question: RealmTrialQuestion, answer: string) => {
+    if (!realmPayload) return;
+    const correct = normalizeAnswerKey(answer) === normalizeAnswerKey(question.correctAnswer);
+
+    if (correct) {
+      setGameState((state) => {
+        if (!state) return state;
+        if (state.memorySealsBroken >= MEMORY_SEAL_COUNT || state.prismMemories.length === 0) return state;
+        const consumed = state.prismMemories[state.prismMemories.length - 1];
+        return {
+          ...state,
+          memorySealsBroken: Math.min(MEMORY_SEAL_COUNT, state.memorySealsBroken + 1),
+          prismMemories: state.prismMemories.slice(0, -1),
+          inventory: consumed ? state.inventory.filter((item, index) => {
+            const lastPrismIndex = state.inventory.map((entry) => entry.type).lastIndexOf("prism-memory");
+            return index !== lastPrismIndex;
+          }) : state.inventory,
+          gameLog: appendLog(
+            state.gameLog,
+            `You answer correctly and feed a Prism Memory into Seal ${state.memorySealsBroken + 1}.`
+          ),
+        };
+      });
+      setModal((current) => (
+        current && current.type === "boss"
+          ? { ...current, question: undefined, trialFeedback: "A Memory Seal breaks. The boss grows more tangible." }
+          : current
+      ));
+      setToast("Memory Seal broken");
+      return;
+    }
+
+    setGameState((state) => {
+      if (!state) return state;
+      const nextHp = Math.max(1, state.hp - 12);
+      return {
+        ...state,
+        hp: nextHp,
+        gameLog: appendLog(state.gameLog, `${theme.bossName} rejects your answer. Memory backlash deals 12 HP.`),
+      };
+    });
+    setModal((current) => (
+      current && current.type === "boss"
+        ? { ...current, trialFeedback: `Wrong answer. Hint: ${question.loreHint}` }
+        : current
+    ));
+  }, [realmPayload, theme.bossName]);
+
   const attemptQuest = (asset: RealmAsset) => {
     if (!gameState) return;
     const roll = rollDie(20);
     const total = roll + gameState.level;
 
-    if (total >= 12) {
+    if (total >= QUEST_DC) {
       setGameState((state) => {
         if (!state || state.questsCompleted.includes(asset.name)) return state;
         return applyRewards(
           { ...state, questsCompleted: [...state.questsCompleted, asset.name] },
-          25,
-          20,
+          22,
+          16,
           [`Quest "${asset.name}" completed. Roll ${roll} + level ${state.level} = ${total}.`]
         );
       });
@@ -819,22 +1122,50 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
 
     setGameState((state) => {
       if (!state) return state;
-      const hp = Math.max(1, state.hp - 10);
+      const hp = Math.max(1, state.hp - 14);
       return {
         ...state,
         hp,
-        gameLog: appendLog(state.gameLog, `Quest "${asset.name}" failed. Roll ${roll} + level ${state.level} = ${total}. Lose 10 HP.`),
+        gameLog: appendLog(state.gameLog, `Quest "${asset.name}" failed. Roll ${roll} + level ${state.level} = ${total}. Lose 14 HP.`),
       };
     });
-    setModal({ type: "quest", asset, result: `Roll ${roll} + level ${gameState.level} = ${total}. DC 12 resisted you.` });
+    setModal({ type: "quest", asset, result: `Roll ${roll} + level ${gameState.level} = ${total}. DC ${QUEST_DC} resisted you.` });
   };
 
   const attackBoss = () => {
     if (!gameState || !realmPayload) return;
+    if (gameState.prismMemories.length < PRISM_MEMORIES_REQUIRED && gameState.memorySealsBroken === 0) {
+      const remaining = PRISM_MEMORIES_REQUIRED - gameState.prismMemories.length;
+      addLog(`${theme.bossName} remains immune. You still need ${remaining} Prism ${remaining === 1 ? "Memory" : "Memories"}.`);
+      setModal({
+        type: "boss",
+        result: `${theme.bossName} is still immune. Gather ${remaining} more Prism ${remaining === 1 ? "Memory" : "Memories"} from NPC trials before the first seal can break.`,
+      });
+      return;
+    }
+
+    if (gameState.memorySealsBroken < MEMORY_SEAL_COUNT) {
+      if (gameState.prismMemories.length === 0) {
+        addLog(`You reach for a Prism Memory, but none remain to break Seal ${gameState.memorySealsBroken + 1}.`);
+        setModal({
+          type: "boss",
+          result: `Seal ${gameState.memorySealsBroken + 1} still holds. You need another Prism Memory before the boss can be weakened further.`,
+        });
+        return;
+      }
+
+      setModal({
+        type: "boss",
+        result: `Memory Seal ${gameState.memorySealsBroken + 1} bars the fight. Answer correctly to spend one Prism Memory and break it.`,
+        question: buildBossSealQuestion(realmPayload, gameState.memorySealsBroken),
+      });
+      return;
+    }
+
     const roll = rollDie(20);
     const total = roll + gameState.level;
-    const hit = total >= 8;
-    const damage = hit ? 8 + rollDie(8) + gameState.level * 2 : 0;
+    const hit = total >= BOSS_HIT_DC;
+    const damage = hit ? 6 + rollDie(8) + gameState.level * 2 : 0;
     const nextBossHp = Math.max(0, bossHp - damage);
     const combatLog = hit
       ? [`You hit the boss for ${damage}. Roll ${roll} + level ${gameState.level} = ${total}.`]
@@ -856,8 +1187,8 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
             bossDefeated: true,
             inventory: state.inventory.some((item) => item.name === trophy.name) ? state.inventory : [...state.inventory, trophy],
           },
-          100,
-          50,
+          120,
+          60,
           [...combatLog, `${theme.bossName} falls. The exit opens near the north gate.`]
         );
       });
@@ -866,7 +1197,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
       return;
     }
 
-    const bossDamage = 3 + rollDie(6) + Math.max(0, Math.floor((realmPayload.assets.length - 2) / 3));
+    const bossDamage = 7 + rollDie(8) + Math.max(0, Math.floor(realmPayload.assets.length / 2));
     const nextHp = gameState.hp - bossDamage;
 
     if (nextHp <= 0) {
@@ -938,7 +1269,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
                 ...stateAfter,
                 inventory: [...stateAfter.inventory, { name: artifact.name, description: artifact.description, type: artifact.type }],
               },
-              15,
+              12,
               0,
               [`Autonomous pilot collected ${artifact.name}.`]
             );
@@ -949,12 +1280,12 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
           const quest = tile.asset;
           const roll = rollDie(20);
           const total = roll + stateAfter.level;
-          if (total >= 10) {
+          if (total >= QUEST_DC) {
             if (!stateAfter.questsCompleted.includes(quest.name)) {
               stateAfter = applyRewards(
                 { ...stateAfter, questsCompleted: [...stateAfter.questsCompleted, quest.name] },
-                quest.description.includes(AUTONOMOUS_MODEL_NAME) ? 12 : 25,
-                quest.description.includes(AUTONOMOUS_MODEL_NAME) ? 6 : 20,
+                quest.description.includes(AUTONOMOUS_MODEL_NAME) ? 10 : 22,
+                quest.description.includes(AUTONOMOUS_MODEL_NAME) ? 5 : 16,
                 [`Autonomous pilot completed "${quest.name}". Roll ${roll} + level ${stateAfter.level} = ${total}.`]
               );
             }
@@ -963,7 +1294,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
           } else {
             stateAfter = {
               ...stateAfter,
-              hp: Math.max(1, stateAfter.hp - 6),
+              hp: Math.max(1, stateAfter.hp - 10),
               gameLog: appendLog(
                 stateAfter.gameLog,
                 `Autonomous pilot tested "${quest.name}" but failed. Roll ${roll} + level ${stateAfter.level} = ${total}.`
@@ -976,17 +1307,64 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
           if (!stateAfter.npcsSpoken.includes(npc.name)) {
             stateAfter = applyRewards(
               { ...stateAfter, npcsSpoken: [...stateAfter.npcsSpoken, npc.name] },
-              10,
+              6,
               0,
               [`Autonomous pilot asked ${npc.name} for a route clue.`]
             );
           } else {
             stateAfter = { ...stateAfter, gameLog: appendLog(stateAfter.gameLog, `Autonomous pilot checks in with ${npc.name}.`) };
           }
+          if (!stateAfter.answeredNpcTrials.includes(npc.name)) {
+            const reward = prismMemoryItem(npc.name, npc.name);
+            stateAfter = applyRewards(
+              {
+                ...stateAfter,
+                answeredNpcTrials: [...stateAfter.answeredNpcTrials, npc.name],
+                prismMemories: [...stateAfter.prismMemories, reward],
+                inventory: [...stateAfter.inventory, reward],
+              },
+              18,
+              8,
+              [`Autonomous pilot solved ${npc.name}'s memory trial and secured a Prism Memory.`]
+            );
+          }
           pulse = `Spoke with NPC: ${npc.name}`;
         } else if (tile.type === "boss") {
           const currentBossHp = bossHpRef.current || bossMaxHp(currentRealm);
-          if (stateAfter.hp < 35) {
+          if (stateAfter.prismMemories.length < PRISM_MEMORIES_REQUIRED && stateAfter.memorySealsBroken === 0) {
+            stateAfter = {
+              ...stateAfter,
+              gameLog: appendLog(
+                stateAfter.gameLog,
+                `Autonomous pilot studies ${currentTheme.bossName} but still needs ${PRISM_MEMORIES_REQUIRED - stateAfter.prismMemories.length} Prism Memories.`
+              ),
+            };
+            pulse = `Boss remains sealed: ${currentTheme.bossName}`;
+          } else if (stateAfter.memorySealsBroken < MEMORY_SEAL_COUNT) {
+            if (stateAfter.prismMemories.length > 0) {
+              const consumed = stateAfter.prismMemories[stateAfter.prismMemories.length - 1];
+              const lastPrismIndex = stateAfter.inventory.map((entry) => entry.type).lastIndexOf("prism-memory");
+              stateAfter = {
+                ...stateAfter,
+                memorySealsBroken: stateAfter.memorySealsBroken + 1,
+                prismMemories: stateAfter.prismMemories.slice(0, -1),
+                inventory: consumed && lastPrismIndex >= 0
+                  ? stateAfter.inventory.filter((_, index) => index !== lastPrismIndex)
+                  : stateAfter.inventory,
+                gameLog: appendLog(
+                  stateAfter.gameLog,
+                  `Autonomous pilot answers the boss's memory trial and breaks Seal ${stateAfter.memorySealsBroken + 1}.`
+                ),
+              };
+              pulse = `Memory Seal broken: ${stateAfter.memorySealsBroken}/${MEMORY_SEAL_COUNT}`;
+            } else {
+              stateAfter = {
+                ...stateAfter,
+                gameLog: appendLog(stateAfter.gameLog, `Autonomous pilot reaches the seal gate but has no Prism Memories left to spend.`),
+              };
+              pulse = `Need Prism Memory for next seal`;
+            }
+          } else if (stateAfter.hp < 35) {
             stateAfter = {
               ...stateAfter,
               gameLog: appendLog(stateAfter.gameLog, `Autonomous pilot scouts ${currentTheme.bossName} and waits for more HP.`),
@@ -995,8 +1373,8 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
           } else {
             const roll = rollDie(20);
             const total = roll + stateAfter.level;
-            const hit = total >= 8;
-            const damage = hit ? 8 + rollDie(8) + stateAfter.level * 2 : 0;
+            const hit = total >= BOSS_HIT_DC;
+            const damage = hit ? 6 + rollDie(8) + stateAfter.level * 2 : 0;
             const nextBossHp = Math.max(0, currentBossHp - damage);
 
             if (nextBossHp <= 0) {
@@ -1016,14 +1394,14 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
                     ? stateAfter.inventory
                     : [...stateAfter.inventory, trophy],
                 },
-                100,
-                50,
+                120,
+                60,
                 [`Autonomous pilot defeated ${currentTheme.bossName}. The exit opens near the north gate.`]
               );
               setToast("Autonomous clan defeated the boss. Exit opened.");
               pulse = `Boss defeated: ${currentTheme.bossName}`;
             } else {
-              const bossDamage = 3 + rollDie(6) + Math.max(0, Math.floor((currentRealm.assets.length - 2) / 3));
+              const bossDamage = 7 + rollDie(8) + Math.max(0, Math.floor(currentRealm.assets.length / 2));
               const nextHp = stateAfter.hp - bossDamage;
               bossHpRef.current = nextBossHp;
               setBossHp(nextBossHp);
@@ -1183,6 +1561,8 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
 
     const progress: SaveProgressPayload = {
       completed: markCompleted,
+      sessionId: gameState.sessionId,
+      clanTitle: realmPayload.title,
       hp: gameState.hp,
       xp: gameState.xp,
       gold: gameState.gold,
@@ -1200,8 +1580,27 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "saveProgress", tokenId, chainId, progress }),
       });
-      const payload = (await response.json()) as { progressRootHash?: string; storageTxHash?: string; error?: string };
+      const payload = (await response.json()) as {
+        progressRootHash?: string;
+        storageTxHash?: string;
+        leaderboardEntry?: LeaderboardEntry;
+        error?: string;
+      };
       if (!response.ok || !payload.progressRootHash) throw new Error(payload.error || "Progress upload failed");
+
+      if (payload.leaderboardEntry) {
+        setLeaderboard((current) => {
+          const next = current.filter((entry) => entry.tokenId !== payload.leaderboardEntry!.tokenId);
+          next.push(payload.leaderboardEntry!);
+          return next.sort((a, b) =>
+            b.totalXpEarned !== a.totalXpEarned
+              ? b.totalXpEarned - a.totalXpEarned
+              : b.highestRunXp !== a.highestRunXp
+                ? b.highestRunXp - a.highestRunXp
+                : b.updatedAt - a.updatedAt
+          );
+        });
+      }
 
       if (markCompleted && gameState.bossDefeated) {
         setSaveStatus("Recording realm completion on-chain...");
@@ -1474,7 +1873,10 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
                 <ul className="space-y-2 text-xs leading-5 text-parchment">
                   <li>Goal: clear the boss and reach the exit tile.</li>
                   <li>Artifacts add to your inventory and grant XP.</li>
-                  <li>Failing quests costs HP, so start with nearby NPCs and artifacts first.</li>
+                  <li>NPCs now test your understanding of the realm; correct answers award Prism Memories.</li>
+                  <li>The boss is immune until you gather enough Prism Memories and break every Memory Seal.</li>
+                  <li>Quests now check against DC {QUEST_DC}; failures hit harder.</li>
+                  <li>Empty tiles can trigger roaming hazards, so every step matters.</li>
                 </ul>
               </div>
             </Panel>
@@ -1482,8 +1884,52 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
             <Panel title="Stats" icon={Heart}>
               <StateRow label="HP" value={`${gameState.hp}/${gameState.maxHp}`} />
               <StateRow label="Level" value={String(gameState.level)} />
-              <StateRow label="XP" value={`${gameState.xp}/100`} />
+              <StateRow label="Run XP" value={`${xpProgressInLevel}/100 (${xpToNextLevel} to next level)`} />
+              <StateRow label="Total Run XP" value={String(gameState.xp)} />
+              <StateRow label="Lifetime iNFT XP" value={String(tokenLeaderboardEntry?.totalXpEarned ?? 0)} />
+              <StateRow label="Prism Memories" value={`${gameState.prismMemories.length}/${PRISM_MEMORIES_REQUIRED} needed`} />
+              <StateRow label="Memory Seals" value={`${gameState.memorySealsBroken}/${MEMORY_SEAL_COUNT} broken`} />
               <StateRow label="Gold" value={String(gameState.gold)} />
+            </Panel>
+
+            <Panel title="XP Leaderboard" icon={Trophy}>
+              {leaderboardStatus && (
+                <p className="rounded-md border border-white/10 bg-black/25 p-3 text-xs text-stone">{leaderboardStatus}</p>
+              )}
+              {tokenLeaderboardEntry && (
+                <div className="rounded-md border border-gold/25 bg-gold/10 p-3">
+                  <p className="text-xs uppercase tracking-[0.24em] text-gold">Your iNFT</p>
+                  <p className="mt-2 text-lg font-black text-parchment">#{tokenLeaderboardEntry.tokenId} {tokenLeaderboardEntry.clanTitle}</p>
+                  <p className="mt-1 text-sm text-stone">
+                    {tokenLeaderboardEntry.totalXpEarned} lifetime XP, peak run {tokenLeaderboardEntry.highestRunXp}, {tokenLeaderboardEntry.completedRuns} clears
+                  </p>
+                </div>
+              )}
+              {leaderboard.length === 0 ? (
+                <p className="text-sm text-stone">No XP has been recorded yet. Save progress to seed the board.</p>
+              ) : (
+                <div className="space-y-2">
+                  {leaderboard.slice(0, 8).map((entry, index) => (
+                    <div
+                      key={entry.tokenId}
+                      className={`rounded-md border px-3 py-3 ${
+                        entry.tokenId === tokenId ? "border-gold/40 bg-gold/10" : "border-white/10 bg-black/20"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-parchment">
+                          {index + 1}. Clan #{entry.tokenId}
+                        </p>
+                        <p className="font-mono text-xs text-gold">{entry.totalXpEarned} XP</p>
+                      </div>
+                      <p className="mt-1 text-xs text-stone">{entry.clanTitle}</p>
+                      <p className="mt-2 text-[11px] uppercase tracking-[0.18em] text-stone">
+                        Best run {entry.highestRunXp} • Boss kills {entry.bossKills} • Clears {entry.completedRuns}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </Panel>
 
             <Panel title="Inventory" icon={Package}>
@@ -1514,6 +1960,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
                 ))
               )}
               <StateRow label="Boss" value={gameState.bossDefeated ? "☑ Defeated" : "☐ Awaiting challenge"} />
+              <StateRow label="Boss Gate" value={gameState.memorySealsBroken >= MEMORY_SEAL_COUNT ? "Vulnerable" : `Sealed (${MEMORY_SEAL_COUNT - gameState.memorySealsBroken} left)`} />
             </Panel>
 
             <Panel title="Persistence" icon={Save}>
@@ -1613,8 +2060,10 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
           bossName={theme.bossName}
           onClose={() => setModal(null)}
           onTalk={talkToNpc}
+          onNpcTrialAnswer={answerNpcTrial}
           onQuest={attemptQuest}
           onBossAttack={attackBoss}
+          onBossTrialAnswer={answerBossSealTrial}
         />
       )}
 
@@ -1698,8 +2147,10 @@ function EncounterDialog(props: {
   bossName: string;
   onClose: () => void;
   onTalk: (asset: RealmAsset) => void;
+  onNpcTrialAnswer: (asset: RealmAsset, question: RealmTrialQuestion, answer: string) => void;
   onQuest: (asset: RealmAsset) => void;
   onBossAttack: () => void;
+  onBossTrialAnswer: (question: RealmTrialQuestion, answer: string) => void;
 }) {
   const { modal } = props;
   const title = modal.type === "boss" ? props.bossName : modal.asset.name;
@@ -1721,6 +2172,29 @@ function EncounterDialog(props: {
           </div>
         )}
         {result && <p className="mt-4 rounded-md border border-white/10 bg-black/25 p-3 text-sm text-parchment">{result}</p>}
+        {"trialFeedback" in modal && modal.trialFeedback && (
+          <p className="mt-4 rounded-md border border-gold/20 bg-gold/5 p-3 text-sm text-stone">{modal.trialFeedback}</p>
+        )}
+
+        {modal.type === "npc" && modal.question && (
+          <div className="mt-5 space-y-3 rounded-md border border-white/10 bg-black/25 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-gold">Prism Trial</p>
+            <p className="text-sm text-parchment">{modal.question.prompt}</p>
+            <p className="text-xs text-stone">Hint: {modal.question.loreHint}</p>
+            <div className="space-y-2">
+              {modal.question.options.map((option) => (
+                <button
+                  key={option}
+                  onClick={() => props.onNpcTrialAnswer(modal.asset, modal.question!, option)}
+                  disabled={modal.trialResolved || modal.loading}
+                  className="block w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-parchment transition hover:border-gold/40 disabled:opacity-60"
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {modal.type === "boss" && (
           <div className="mt-5 space-y-2">
@@ -1730,6 +2204,25 @@ function EncounterDialog(props: {
             </div>
             <div className="h-3 overflow-hidden rounded-full bg-white/10">
               <div className="h-full rounded-full bg-ember transition-all" style={{ width: `${Math.max(0, (props.bossHp / props.maxBossHp) * 100)}%` }} />
+            </div>
+          </div>
+        )}
+
+        {modal.type === "boss" && modal.question && (
+          <div className="mt-5 space-y-3 rounded-md border border-ember/25 bg-ember/5 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-ember">Memory Seal Trial</p>
+            <p className="text-sm text-parchment">{modal.question.prompt}</p>
+            <p className="text-xs text-stone">Hint: {modal.question.loreHint}</p>
+            <div className="space-y-2">
+              {modal.question.options.map((option) => (
+                <button
+                  key={option}
+                  onClick={() => props.onBossTrialAnswer(modal.question!, option)}
+                  className="block w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-parchment transition hover:border-ember/40"
+                >
+                  {option}
+                </button>
+              ))}
             </div>
           </div>
         )}

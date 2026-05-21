@@ -91,7 +91,17 @@ export interface InventoryItem {
   type: string;
 }
 
+export interface RealmTrialQuestion {
+  id: string;
+  prompt: string;
+  options: string[];
+  correctAnswer: string;
+  loreHint: string;
+  rewardLabel: string;
+}
+
 export interface GameState {
+  sessionId: string;
   playerPos: { x: number; y: number };
   hp: number;
   maxHp: number;
@@ -99,6 +109,9 @@ export interface GameState {
   xp: number;
   level: number;
   inventory: InventoryItem[];
+  prismMemories: InventoryItem[];
+  answeredNpcTrials: string[];
+  memorySealsBroken: number;
   questsCompleted: string[];
   npcsSpoken: string[];
   bossDefeated: boolean;
@@ -126,12 +139,14 @@ export interface BiomeTheme {
 }
 
 export type EncounterModal =
-  | { type: "npc"; asset: RealmAsset; result?: string; loading?: boolean }
+  | { type: "npc"; asset: RealmAsset; result?: string; loading?: boolean; question?: RealmTrialQuestion; trialResolved?: boolean; trialFeedback?: string }
   | { type: "quest"; asset: RealmAsset; result?: string }
-  | { type: "boss"; result?: string };
+  | { type: "boss"; result?: string; question?: RealmTrialQuestion; trialFeedback?: string };
 
 export interface SaveProgressPayload {
   completed: boolean;
+  sessionId: string;
+  clanTitle: string;
   hp: number;
   xp: number;
   gold: number;
@@ -141,6 +156,25 @@ export interface SaveProgressPayload {
   bossDefeated: boolean;
   playerAddress: Address;
   completedAt?: number;
+}
+
+export interface LeaderboardEntry {
+  tokenId: string;
+  clanTitle: string;
+  totalXpEarned: number;
+  highestRunXp: number;
+  lastRunXp: number;
+  currentLevel: number;
+  totalRuns: number;
+  completedRuns: number;
+  bossKills: number;
+  lastPlayerAddress: string;
+  updatedAt: number;
+}
+
+export interface LeaderboardResponse {
+  entries: LeaderboardEntry[];
+  updatedAt: number;
 }
 
 export interface NpcDialogueResponse {

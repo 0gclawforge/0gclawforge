@@ -1,3 +1,4 @@
+import { Compute as KitCompute, type ChatMessage } from "@foundryprotocol/0gkit-compute";
 import { createZGComputeNetworkBroker } from "@0glabs/0g-serving-broker";
 import { ethers } from "ethers";
 import type { ComputeConfig, ComputeQueryOptions, SwarmResult } from "./types";
@@ -14,6 +15,7 @@ export class ZGComputeClient {
   private config: ComputeConfig;
   private initialized = false;
   private providerReady = new Set<string>();
+  public lastAttestation: { providerAddress: string; verified: boolean } | null = null;
 
   constructor(config: ComputeConfig) {
     this.config = config;
@@ -151,6 +153,10 @@ export class ZGComputeClient {
     userMessage: string,
     options: ComputeQueryOptions = {}
   ): Promise<{ text: string; verified: boolean; providerAddress: string }> {
+    if (process.env.OG_USE_FOUNDRY_COMPUTE === "true") {
+      return this.queryWithFoundryKit(userMessage, options);
+    }
+
     await this.init();
     const providers = await this.getProviderCandidates();
     const errors: string[] = [];
@@ -232,6 +238,48 @@ export class ZGComputeClient {
     throw new Error(`0G Compute failed across ${providers.length} provider(s): ${errors.join(" | ")}`);
   }
 
+  private async queryWithFoundryKit(
+    userMessage: string,
+    options: ComputeQueryOptions
+  ): Promise<{ text: string; verified: boolean; providerAddress: string }> {
+    await this.init();
+    const providers = await this.getProviderCandidates();
+    const errors: string[] = [];
+    const messages: ChatMessage[] = [];
+
+    if (options.systemPrompt) {
+      messages.push({ role: "system", content: options.systemPrompt });
+    }
+    messages.push({ role: "user", content: userMessage });
+
+    for (const providerAddress of providers) {
+      try {
+        await this.setupProvider(providerAddress);
+        const client = new KitCompute({
+          network: this.config.rpcUrl.includes("testnet") ? "galileo" : "aristotle",
+          brokerRpc: this.config.rpcUrl,
+          brokerKey: this.config.privateKey,
+          provider: providerAddress,
+        });
+        const result = await client.inference({
+          messages,
+          temperature: options.temperature ?? 0.7,
+        });
+        const text = cleanProviderText(result.output);
+        if (!text) throw new Error("Provider returned an empty completion");
+
+        const verified = Boolean(result.receipt.attestation);
+        this.lastAttestation = { providerAddress, verified };
+        return { text, verified, providerAddress };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown provider error";
+        errors.push(`${providerAddress}: ${message}`);
+      }
+    }
+
+    throw new Error(`Foundry 0G Compute failed across ${providers.length} provider(s): ${errors.join(" | ")}`);
+  }
+
   async stop(): Promise<void> {
     if (!this.broker) return;
     for (const providerAddress of this.providerReady) {
@@ -286,4 +334,8 @@ export class ZGComputeClient {
       synthesis: synthesis.text,
     };
   }
+}
+
+function cleanProviderText(raw: string): string {
+  return raw.replace(/\n\s*(?:Count:|Checks?:|Check constraint)[\s\S]*$/i, "").trim();
 }

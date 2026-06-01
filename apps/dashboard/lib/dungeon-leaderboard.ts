@@ -1,5 +1,10 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, sep } from "node:path";
+import { readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ethers } from "ethers";
+import { downloadFromStorage } from "@0gclawforge/sdk";
+import type { StorageConfig } from "@0gclawforge/sdk";
+import { getAgentInftAddress, getOgRpcUrl, getOgStorageIndexer } from "./contract-addresses";
 
 export interface DungeonLeaderboardEntry {
   tokenId: string;
@@ -15,22 +20,7 @@ export interface DungeonLeaderboardEntry {
   updatedAt: number;
 }
 
-interface DungeonLeaderboardSession {
-  xp: number;
-  completed: boolean;
-  bossDefeated: boolean;
-}
-
-interface StoredDungeonLeaderboardEntry extends DungeonLeaderboardEntry {
-  sessions: Record<string, DungeonLeaderboardSession>;
-}
-
-interface DungeonLeaderboardStore {
-  updatedAt: number;
-  entries: Record<string, StoredDungeonLeaderboardEntry>;
-}
-
-export interface DungeonProgressUpdate {
+interface AnchoredDungeonSession {
   tokenId: string;
   sessionId: string;
   clanTitle: string;
@@ -39,116 +29,207 @@ export interface DungeonProgressUpdate {
   level: number;
   completed: boolean;
   bossDefeated: boolean;
+  blockNumber: number;
+  logIndex: number;
+  updatedAt: number;
 }
 
-function leaderboardFilePath() {
-  const cwd = process.cwd();
-  const inDashboardApp = cwd.endsWith(`${sep}apps${sep}dashboard`);
-  return inDashboardApp
-    ? join(cwd, "data", "dungeon-leaderboard.json")
-    : join(cwd, "apps", "dashboard", "data", "dungeon-leaderboard.json");
-}
-
-function createEmptyStore(): DungeonLeaderboardStore {
-  return { updatedAt: Date.now(), entries: {} };
-}
-
-async function readStore() {
-  try {
-    const raw = await readFile(leaderboardFilePath(), "utf8");
-    const parsed = JSON.parse(raw) as Partial<DungeonLeaderboardStore>;
-    return {
-      updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
-      entries: parsed.entries && typeof parsed.entries === "object" ? parsed.entries as Record<string, StoredDungeonLeaderboardEntry> : {},
-    };
-  } catch {
-    return createEmptyStore();
-  }
-}
-
-async function writeStore(store: DungeonLeaderboardStore) {
-  const filePath = leaderboardFilePath();
-  await mkdir(dirname(filePath), { recursive: true });
-  await writeFile(filePath, JSON.stringify(store, null, 2));
-}
-
-function normalizeEntry(tokenId: string, partial?: Partial<StoredDungeonLeaderboardEntry>): StoredDungeonLeaderboardEntry {
-  return {
-    tokenId,
-    clanTitle: partial?.clanTitle || `Clan #${tokenId}`,
-    totalXpEarned: partial?.totalXpEarned ?? 0,
-    highestRunXp: partial?.highestRunXp ?? 0,
-    lastRunXp: partial?.lastRunXp ?? 0,
-    currentLevel: partial?.currentLevel ?? 1,
-    totalRuns: partial?.totalRuns ?? 0,
-    completedRuns: partial?.completedRuns ?? 0,
-    bossKills: partial?.bossKills ?? 0,
-    lastPlayerAddress: partial?.lastPlayerAddress ?? "",
-    updatedAt: partial?.updatedAt ?? Date.now(),
-    sessions: partial?.sessions ?? {},
+interface RealmProgressRecord {
+  kind?: string;
+  payload?: Partial<AnchoredDungeonSession> & {
+    tokenId?: string;
   };
 }
 
-function toPublicEntry(entry: StoredDungeonLeaderboardEntry): DungeonLeaderboardEntry {
-  const { sessions: _sessions, ...publicEntry } = entry;
-  return publicEntry;
+export interface DungeonLeaderboardResponse {
+  entries: DungeonLeaderboardEntry[];
+  updatedAt: number;
+  chainId: number;
+  source: "on-chain";
+  scannedFromBlock: number;
+  scannedToBlock: number;
+}
+
+const METADATA_EVENT = "event AgentMetadataUpdated(uint256 indexed tokenId, bytes32 newHash, string newStorageURI)";
+const LOG_CHUNK_SIZE = 25_000;
+const DEFAULT_LOOKBACK_BLOCKS = 250_000;
+const CACHE_TTL_MS = 30_000;
+const leaderboardCache = new Map<number, { expiresAt: number; value: DungeonLeaderboardResponse }>();
+
+function normalizeChainId(chainId?: number) {
+  return chainId === 16661 ? 16661 : 16602;
+}
+
+function storageConfig(chainId: number): StorageConfig {
+  return {
+    rpcUrl: getOgRpcUrl(chainId),
+    indexerUrl: getOgStorageIndexer(chainId),
+  };
+}
+
+function configuredLeaderboardBlock(chainId: number, latestBlock: number) {
+  const raw =
+    chainId === 16661
+      ? process.env.OG_LEADERBOARD_FROM_BLOCK_MAINNET
+      : process.env.OG_LEADERBOARD_FROM_BLOCK_GALILEO;
+  const configured = Number(raw);
+  if (Number.isSafeInteger(configured) && configured >= 0) {
+    return Math.min(configured, latestBlock);
+  }
+
+  const lookback = Number(process.env.OG_LEADERBOARD_LOOKBACK_BLOCKS);
+  const boundedLookback =
+    Number.isSafeInteger(lookback) && lookback > 0 ? lookback : DEFAULT_LOOKBACK_BLOCKS;
+  return Math.max(0, latestBlock - boundedLookback);
+}
+
+function safeScore(value: unknown) {
+  const number = Number(value ?? 0);
+  return Number.isFinite(number) && number >= 0 ? Math.floor(number) : 0;
+}
+
+async function downloadProgressRecord(rootHash: string, chainId: number) {
+  const outputPath = join(
+    tmpdir(),
+    `0gclawforge-tournament-${chainId}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`
+  );
+
+  try {
+    await downloadFromStorage(rootHash, outputPath, storageConfig(chainId));
+    return JSON.parse(await readFile(outputPath, "utf8")) as RealmProgressRecord;
+  } finally {
+    await rm(outputPath, { force: true });
+  }
+}
+
+async function scanMetadataLogs(provider: ethers.JsonRpcProvider, address: string, fromBlock: number, toBlock: number) {
+  const iface = new ethers.Interface([METADATA_EVENT]);
+  const event = iface.getEvent("AgentMetadataUpdated");
+  if (!event) throw new Error("AgentMetadataUpdated event ABI is unavailable");
+
+  const logs: ethers.Log[] = [];
+  for (let start = fromBlock; start <= toBlock; start += LOG_CHUNK_SIZE) {
+    const end = Math.min(toBlock, start + LOG_CHUNK_SIZE - 1);
+    logs.push(
+      ...(await provider.getLogs({
+        address,
+        fromBlock: start,
+        toBlock: end,
+        topics: [event.topicHash],
+      }))
+    );
+  }
+
+  return { iface, logs };
 }
 
 function sortEntries(entries: DungeonLeaderboardEntry[]) {
   return entries.sort((a, b) => {
     if (b.totalXpEarned !== a.totalXpEarned) return b.totalXpEarned - a.totalXpEarned;
     if (b.highestRunXp !== a.highestRunXp) return b.highestRunXp - a.highestRunXp;
-    return b.updatedAt - a.updatedAt;
+    if (b.completedRuns !== a.completedRuns) return b.completedRuns - a.completedRuns;
+    if (b.bossKills !== a.bossKills) return b.bossKills - a.bossKills;
+    return BigInt(a.tokenId) < BigInt(b.tokenId) ? -1 : 1;
   });
 }
 
-export async function updateDungeonLeaderboard(progress: DungeonProgressUpdate) {
-  const store = await readStore();
-  const existing = normalizeEntry(progress.tokenId, store.entries[progress.tokenId]);
-  const previousSession = existing.sessions[progress.sessionId];
+function aggregateSessions(sessions: AnchoredDungeonSession[]) {
+  const byToken = new Map<string, DungeonLeaderboardEntry>();
 
-  const earnedDelta = Math.max(0, progress.xp - (previousSession?.xp ?? 0));
-  const isNewSession = !previousSession;
-  const justCompleted = progress.completed && !previousSession?.completed;
-  const justBeatBoss = progress.bossDefeated && !previousSession?.bossDefeated;
+  for (const session of sessions) {
+    const entry = byToken.get(session.tokenId) ?? {
+      tokenId: session.tokenId,
+      clanTitle: session.clanTitle || `Clan #${session.tokenId}`,
+      totalXpEarned: 0,
+      highestRunXp: 0,
+      lastRunXp: 0,
+      currentLevel: 1,
+      totalRuns: 0,
+      completedRuns: 0,
+      bossKills: 0,
+      lastPlayerAddress: "",
+      updatedAt: 0,
+    };
 
-  const nextEntry: StoredDungeonLeaderboardEntry = {
-    ...existing,
-    clanTitle: progress.clanTitle || existing.clanTitle,
-    totalXpEarned: existing.totalXpEarned + earnedDelta,
-    highestRunXp: Math.max(existing.highestRunXp, progress.xp),
-    lastRunXp: progress.xp,
-    currentLevel: Math.max(existing.currentLevel, progress.level),
-    totalRuns: existing.totalRuns + (isNewSession ? 1 : 0),
-    completedRuns: existing.completedRuns + (justCompleted ? 1 : 0),
-    bossKills: existing.bossKills + (justBeatBoss ? 1 : 0),
-    lastPlayerAddress: progress.playerAddress,
-    updatedAt: Date.now(),
-    sessions: {
-      ...existing.sessions,
-      [progress.sessionId]: {
-        xp: progress.xp,
-        completed: progress.completed,
-        bossDefeated: progress.bossDefeated,
-      },
-    },
-  };
+    entry.clanTitle = session.clanTitle || entry.clanTitle;
+    entry.totalXpEarned += session.xp;
+    entry.highestRunXp = Math.max(entry.highestRunXp, session.xp);
+    entry.lastRunXp = session.xp;
+    entry.currentLevel = Math.max(entry.currentLevel, session.level);
+    entry.totalRuns += 1;
+    entry.completedRuns += session.completed ? 1 : 0;
+    entry.bossKills += session.bossDefeated ? 1 : 0;
+    entry.lastPlayerAddress = session.playerAddress;
+    entry.updatedAt = Math.max(entry.updatedAt, session.updatedAt);
+    byToken.set(session.tokenId, entry);
+  }
 
-  store.entries[progress.tokenId] = nextEntry;
-  store.updatedAt = Date.now();
-  await writeStore(store);
-
-  return {
-    entry: toPublicEntry(nextEntry),
-    leaderboard: sortEntries(Object.values(store.entries).map(toPublicEntry)),
-    updatedAt: store.updatedAt,
-  };
+  return sortEntries([...byToken.values()]);
 }
 
-export async function getDungeonLeaderboard() {
-  const store = await readStore();
-  return {
-    entries: sortEntries(Object.values(store.entries).map(toPublicEntry)),
-    updatedAt: store.updatedAt,
+export async function getDungeonLeaderboard(requestedChainId?: number, options?: { fresh?: boolean }) {
+  const chainId = normalizeChainId(requestedChainId);
+  const cached = leaderboardCache.get(chainId);
+  if (!options?.fresh && cached && cached.expiresAt > Date.now()) return cached.value;
+
+  const provider = new ethers.JsonRpcProvider(getOgRpcUrl(chainId));
+  const address = getAgentInftAddress(chainId);
+  const latestBlock = await provider.getBlockNumber();
+  const fromBlock = configuredLeaderboardBlock(chainId, latestBlock);
+  const { iface, logs } = await scanMetadataLogs(provider, address, fromBlock, latestBlock);
+  const blockTimestamps = new Map<number, number>();
+  const sessions = new Map<string, AnchoredDungeonSession>();
+
+  for (const log of logs) {
+    try {
+      const parsed = iface.parseLog(log);
+      const tokenId = String(parsed?.args.tokenId ?? "");
+      const storageURI = String(parsed?.args.newStorageURI ?? "");
+      if (!tokenId || !storageURI) continue;
+
+      const record = await downloadProgressRecord(storageURI, chainId);
+      const progress = record.payload;
+      if (record.kind !== "realm-progress" || !progress?.completed || !progress.bossDefeated) continue;
+      if (String(progress.tokenId ?? tokenId) !== tokenId || !progress.sessionId) continue;
+
+      let updatedAt = blockTimestamps.get(log.blockNumber);
+      if (!updatedAt) {
+        const block = await provider.getBlock(log.blockNumber);
+        updatedAt = Number(block?.timestamp ?? 0) * 1_000;
+        blockTimestamps.set(log.blockNumber, updatedAt);
+      }
+
+      const session: AnchoredDungeonSession = {
+        tokenId,
+        sessionId: String(progress.sessionId),
+        clanTitle: String(progress.clanTitle || `Clan #${tokenId}`),
+        playerAddress: String(progress.playerAddress || ""),
+        xp: safeScore(progress.xp),
+        level: Math.max(1, safeScore(progress.level)),
+        completed: true,
+        bossDefeated: true,
+        blockNumber: log.blockNumber,
+        logIndex: log.index,
+        updatedAt,
+      };
+      const key = `${tokenId}:${session.sessionId}`;
+      const previous = sessions.get(key);
+      if (!previous || previous.blockNumber < session.blockNumber || previous.logIndex < session.logIndex) {
+        sessions.set(key, session);
+      }
+    } catch {
+      // Ignore unrelated metadata roots and storage records that are not tournament completions.
+    }
+  }
+
+  const value: DungeonLeaderboardResponse = {
+    entries: aggregateSessions([...sessions.values()]),
+    updatedAt: Date.now(),
+    chainId,
+    source: "on-chain",
+    scannedFromBlock: fromBlock,
+    scannedToBlock: latestBlock,
   };
+  leaderboardCache.set(chainId, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+  return value;
 }

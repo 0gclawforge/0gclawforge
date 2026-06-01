@@ -167,7 +167,7 @@ export default function PlayDiscoveryPage() {
 
     async function loadLeaderboard() {
       try {
-        const response = await fetch("/api/realm/leaderboard", { cache: "no-store" });
+        const response = await fetch(`/api/realm/leaderboard?chainId=${chainId}`, { cache: "no-store" });
         const payload = (await response.json()) as LeaderboardResponse & { error?: string };
         if (!response.ok) throw new Error(payload.error || "Failed to load leaderboard");
         if (!cancelled) {
@@ -185,7 +185,7 @@ export default function PlayDiscoveryPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [chainId]);
 
   const enterToken = () => {
     const trimmed = tokenSearch.trim();
@@ -198,7 +198,7 @@ export default function PlayDiscoveryPage() {
 
   return (
     <main className="mx-auto min-h-[calc(100vh-4rem)] max-w-7xl px-6 py-12">
-      <motion.section initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+      <motion.section initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-8">
         <div className="grid gap-6 lg:grid-cols-[1fr_380px] lg:items-end">
           <div>
             <p className="text-xs uppercase tracking-[0.24em] text-gold">Playable UGC Realms</p>
@@ -271,16 +271,19 @@ export default function PlayDiscoveryPage() {
           )}
         </div>
 
-        <div className="rounded-md border border-white/10 bg-white/[0.03] p-5">
+        <div id="leaderboard" className="order-first scroll-mt-24 rounded-md border border-gold/30 bg-gold/[0.045] p-5 shadow-glow">
           <div className="mb-5 flex items-center gap-3">
             <Sparkles className="h-5 w-5 text-gold" />
-            <h2 className="text-2xl font-black text-parchment">Dungeon XP Leaderboard</h2>
+            <div>
+              <h2 className="text-2xl font-black text-parchment">Tournament Leaderboard</h2>
+              <p className="mt-1 text-xs uppercase tracking-[0.18em] text-moss">On-chain verified completed runs • Chain {chainId}</p>
+            </div>
           </div>
           {leaderboardStatus ? (
             <div className="rounded-md border border-white/10 bg-black/25 p-4 text-sm text-parchment">{leaderboardStatus}</div>
           ) : leaderboard.length === 0 ? (
             <div className="rounded-md border border-white/10 bg-black/25 p-4 text-sm text-stone">
-              No dungeon XP has been saved yet.
+              No on-chain tournament completions have been recorded on this network yet.
             </div>
           ) : (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">

@@ -178,6 +178,26 @@ const themes: Record<BiomeTheme["id"], BiomeTheme> = {
     npcIcon: "♜",
     bossName: "Throne Warden",
   },
+  underwater: {
+    id: "underwater",
+    name: "Sunken Reef",
+    floorClass: "bg-cyan-950/20",
+    wallClass: "bg-cyan-950/50 border-cyan-300/15",
+    wallIcon: "🪸",
+    decorationIcons: ["🐚", "🌊", "✦"],
+    npcIcon: "🧜",
+    bossName: "Abyssal Tide Wyrm",
+  },
+  volcanic: {
+    id: "volcanic",
+    name: "Volcanic Rift",
+    floorClass: "bg-ember/10",
+    wallClass: "bg-stone-950/70 border-ember/20",
+    wallIcon: "🌋",
+    decorationIcons: ["🔥", "◆", "✦"],
+    npcIcon: "🧙",
+    bossName: "Magma Crown Drake",
+  },
   default: {
     id: "default",
     name: "Wild Realm",
@@ -219,11 +239,31 @@ function selectTheme(realm: RealmPayload): BiomeTheme {
   const text = `${realm.title} ${realm.lore} ${biome?.name ?? ""} ${biome?.description ?? ""}`.toLowerCase();
 
   if (/(neon|cyber|punk|street|city|district|arcade)/.test(text)) return themes.neon;
+  if (/(underwater|ocean|coral|reef|abyss|sunken|sea|tide)/.test(text)) return themes.underwater;
+  if (/(volcanic|volcano|lava|magma|inferno|ash|crater)/.test(text)) return themes.volcanic;
   if (/(castle|citadel|fortress|cathedral|throne)/.test(text)) return themes.citadel;
   if (/(desert|dune|sand|oasis|cactus|sun)/.test(text)) return themes.desert;
-  if (/(cave|dungeon|stone|crypt|lava|vault|ember|under)/.test(text)) return themes.cave;
+  if (/(cave|dungeon|stone|crypt|vault|ember)/.test(text)) return themes.cave;
   if (/(forest|grove|moss|tree|root|moonlit|wood|wild)/.test(text)) return themes.forest;
   return themes.default;
+}
+
+function seedDangerZones(grid: Tile[][], realm: RealmPayload, spawn: { x: number; y: number }) {
+  const nextGrid = cloneGrid(grid);
+  const existing = findTilePositions(nextGrid, (tile) => tile.type === "danger").length;
+  const candidates = findTilePositions(
+    nextGrid,
+    (tile, x, y) => (tile.type === "floor" || tile.type === "decoration") && tileDistance({ x, y }, spawn) > 3
+  );
+  const random = mulberry32(hashSeed(`${realm.tokenId}:${realm.title}:danger-zones`));
+
+  for (let index = existing; index < 5 && candidates.length > 0; index++) {
+    const candidateIndex = Math.floor(random() * candidates.length);
+    const [candidate] = candidates.splice(candidateIndex, 1);
+    if (candidate) nextGrid[candidate.y][candidate.x] = { type: "danger", icon: "\u26A0", passable: true };
+  }
+
+  return nextGrid;
 }
 
 function generateMap(realm: RealmPayload) {
@@ -246,6 +286,7 @@ function generateMap(realm: RealmPayload) {
             : cell.type === "artifact" ? "💎"
             : cell.type === "boss" ? layout.bossIcon || "🐉"
             : cell.type === "decoration" ? cell.motif || theme.decorationIcons[0] || "✦"
+            : cell.type === "danger" ? "\u26A0"
             : cell.type === "exit" ? "🚪"
             : cell.type === "wall" ? theme.wallIcon
             : "",
@@ -255,7 +296,7 @@ function generateMap(realm: RealmPayload) {
     );
 
     return {
-      grid: explicitGrid,
+      grid: seedDangerZones(explicitGrid, realm, realm.map.spawn ?? PLAYER_SPAWN),
       theme,
       spawn: realm.map.spawn ?? PLAYER_SPAWN,
     };
@@ -362,7 +403,7 @@ function generateMap(realm: RealmPayload) {
     }
   }
 
-  return { grid, theme, spawn: PLAYER_SPAWN };
+  return { grid: seedDangerZones(grid, realm, PLAYER_SPAWN), theme, spawn: PLAYER_SPAWN };
 }
 
 function bossMaxHp(realm: RealmPayload | null) {
@@ -897,7 +938,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
 
     async function loadLeaderboard() {
       try {
-        const response = await fetch("/api/realm/leaderboard", { cache: "no-store" });
+        const response = await fetch(`/api/realm/leaderboard?chainId=${chainId}`, { cache: "no-store" });
         const payload = (await response.json()) as LeaderboardResponse & { error?: string };
         if (!response.ok) throw new Error(payload.error || "Failed to load leaderboard");
         if (!cancelled) {
@@ -915,7 +956,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [tokenId]);
+  }, [chainId, tokenId]);
 
   useEffect(() => {
     if (!realmPayload) return;
@@ -1102,12 +1143,19 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
       const enteredDragonFire = dragonFireTilesRef.current.some(
         (fireTile) => fireTile.phase === "burning" && fireTile.x === next.x && fireTile.y === next.y
       );
+      const enteredDangerZone = tile.type === "danger";
+      const dangerRewarded = enteredDangerZone && Math.random() < 0.45;
+      const dangerGold = dangerRewarded ? 18 + rollDie(18) : 0;
       const hazardTriggered =
         !enteredDragonFire &&
+        !dangerRewarded &&
+        (enteredDangerZone ||
         (tile.type === "floor" || tile.type === "decoration") &&
-        Math.random() < MOVE_HAZARD_CHANCE;
+        Math.random() < MOVE_HAZARD_CHANCE);
       const hazardDamage = enteredDragonFire
         ? 8 + rollDie(6)
+        : enteredDangerZone && !dangerRewarded
+          ? 7 + rollDie(9)
         : hazardTriggered
           ? 2 + rollDie(4) + Math.max(0, Math.floor(gameState.level / 2))
           : 0;
@@ -1115,6 +1163,14 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
 
       setGameState((state) => {
         if (!state) return state;
+        if (dangerRewarded) {
+          return applyRewards(
+            { ...state, playerPos: next },
+            10,
+            dangerGold,
+            [`You brave a danger zone and recover ${dangerGold} gold plus 10 XP.`]
+          );
+        }
         if (!hazardTriggered && !enteredDragonFire) return { ...state, playerPos: next };
         return {
           ...state,
@@ -1126,6 +1182,8 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
             survivedHazard
               ? enteredDragonFire
                 ? `${theme.bossName}'s burning trail scorches you for ${hazardDamage} damage.`
+                : enteredDangerZone
+                  ? `The danger zone erupts for ${hazardDamage} damage.`
                 : `A roaming dungeon hazard catches you for ${hazardDamage} damage.`
               : enteredDragonFire
                 ? `${theme.bossName}'s burning trail overwhelms you. You stagger back to the gate and drop some gold.`
@@ -1133,12 +1191,13 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
           ),
         };
       });
-      playCue(hazardDamage > 0 ? "hit" : "move");
+      if (enteredDangerZone) replaceTile(next.x, next.y, { ...EMPTY_TILE });
+      playCue(dangerRewarded ? "collect" : hazardDamage > 0 ? "hit" : "move");
       if (!survivedHazard) return;
       setMovesSinceAutosave((count) => Math.min(AUTOSAVE_MOVE_INTERVAL, count + 1));
       triggerInteraction(tile, next.x, next.y);
     },
-    [addLog, completed, gameState, grid, modal, playCue, realmPayload, theme.bossName, triggerInteraction]
+    [addLog, completed, gameState, grid, modal, playCue, realmPayload, replaceTile, theme.bossName, triggerInteraction]
   );
 
   useEffect(() => {
@@ -1505,7 +1564,21 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
       const tile = gridAfter[activeStep.y]?.[activeStep.x];
 
       if (arrived && tile) {
-        if (tile.type === "artifact" && tile.asset) {
+        if (tile.type === "danger") {
+          const rewarded = Math.random() < 0.45;
+          const gold = rewarded ? 18 + rollDie(18) : 0;
+          const damage = rewarded ? 0 : 7 + rollDie(9);
+          stateAfter = rewarded
+            ? applyRewards(stateAfter, 10, gold, [`Autonomous pilot braved a danger zone and recovered ${gold} gold plus 10 XP.`])
+            : {
+                ...stateAfter,
+                hp: Math.max(1, stateAfter.hp - damage),
+                gameLog: appendLog(stateAfter.gameLog, `Autonomous pilot crossed a danger zone and lost ${damage} HP.`),
+              };
+          gridAfter = updateTile(gridAfter, activeStep.x, activeStep.y, { ...EMPTY_TILE });
+          pulse = rewarded ? `Danger zone reward: ${gold} gold` : `Danger zone eruption: ${damage} damage`;
+          playCue(rewarded ? "collect" : "hit");
+        } else if (tile.type === "artifact" && tile.asset) {
           const artifact = tile.asset;
           if (!stateAfter.inventory.some((item) => item.name === artifact.name)) {
             stateAfter = applyRewards(
@@ -1834,24 +1907,9 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
       const payload = (await response.json()) as {
         progressRootHash?: string;
         storageTxHash?: string;
-        leaderboardEntry?: LeaderboardEntry;
         error?: string;
       };
       if (!response.ok || !payload.progressRootHash) throw new Error(payload.error || "Progress upload failed");
-
-      if (payload.leaderboardEntry) {
-        setLeaderboard((current) => {
-          const next = current.filter((entry) => entry.tokenId !== payload.leaderboardEntry!.tokenId);
-          next.push(payload.leaderboardEntry!);
-          return next.sort((a, b) =>
-            b.totalXpEarned !== a.totalXpEarned
-              ? b.totalXpEarned - a.totalXpEarned
-              : b.highestRunXp !== a.highestRunXp
-                ? b.highestRunXp - a.highestRunXp
-                : b.updatedAt - a.updatedAt
-          );
-        });
-      }
 
       if (markCompleted && gameState.bossDefeated) {
         setSaveStatus("Recording realm completion on-chain...");
@@ -2153,6 +2211,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
                   <li>NPCs now test your understanding of the realm; correct answers award Prism Memories.</li>
                   <li>The boss is immune until you gather enough Prism Memories and break every Memory Seal.</li>
                   <li>When the dragon marks tiles, move quickly. Warning tiles ignite into damaging fire.</li>
+                  <li>Visible danger zones can erupt for heavy damage or pay out bonus gold and XP.</li>
                   <li>Quests now check against DC {QUEST_DC}; failures hit harder.</li>
                   <li>Empty tiles can trigger roaming hazards, so every step matters.</li>
                 </ul>
@@ -2184,7 +2243,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
                 </div>
               )}
               {leaderboard.length === 0 ? (
-                <p className="text-sm text-stone">No XP has been recorded yet. Save progress to seed the board.</p>
+                <p className="text-sm text-stone">No on-chain tournament completion has been recorded on this network yet.</p>
               ) : (
                 <div className="space-y-2">
                   {leaderboard.slice(0, 8).map((entry, index) => (
@@ -2384,6 +2443,8 @@ function TileCell({
             ? "tile-quest border-accent-primary/70 bg-accent-primary/20 text-parchment"
             : type === "artifact"
               ? "tile-artifact border-gold/60 bg-gold/30 text-gold"
+              : type === "danger"
+                ? "tile-danger border-ember/70 bg-ember/20 text-ember"
               : type === "boss"
                 ? "tile-boss border-ember bg-ember/20 text-ember"
                 : type === "exit"
@@ -2392,6 +2453,8 @@ function TileCell({
 
   const palette = (() => {
     if (theme.id === "neon") return { floor: "#11263c", wall: "#09101a", accent: "#ff4fd8", glow: "#25f3ff", line: "#6cf5ff" };
+    if (theme.id === "underwater") return { floor: "#0c3340", wall: "#08252f", accent: "#38d6cf", glow: "#b8fff4", line: "#267a83" };
+    if (theme.id === "volcanic") return { floor: "#351310", wall: "#210b0a", accent: "#ff6b35", glow: "#ffd166", line: "#8f3020" };
     if (theme.id === "citadel") return { floor: "#2a2430", wall: "#1d1823", accent: "#d4b06a", glow: "#f7ead2", line: "#8c6b3f" };
     if (theme.id === "desert") return { floor: "#3e2a14", wall: "#2a1b0f", accent: "#f0b34d", glow: "#ffd27a", line: "#8e6231" };
     if (theme.id === "cave") return { floor: "#1d1c25", wall: "#121119", accent: "#ff7a3d", glow: "#ffd166", line: "#714126" };

@@ -17,7 +17,7 @@ export interface RealmPayload {
   version?: number;
   previousRealmRootURI?: string;
   visualTheme?: {
-    id: "forest" | "desert" | "cave" | "neon" | "citadel" | "default";
+    id: "forest" | "desert" | "cave" | "neon" | "citadel" | "underwater" | "volcanic" | "default";
     palette: {
       bg: string;
       floor: string;
@@ -47,7 +47,7 @@ export interface RealmMap {
 }
 
 export interface RealmMapTile {
-  type: "wall" | "floor" | "npc" | "quest" | "artifact" | "boss" | "decoration" | "exit";
+  type: "wall" | "floor" | "npc" | "quest" | "artifact" | "boss" | "decoration" | "danger" | "exit";
   assetName?: string;
   motif?: string;
 }
@@ -118,7 +118,7 @@ export interface GameState {
   gameLog: string[];
 }
 
-export type TileType = "wall" | "floor" | "npc" | "quest" | "artifact" | "boss" | "decoration" | "exit";
+export type TileType = "wall" | "floor" | "npc" | "quest" | "artifact" | "boss" | "decoration" | "danger" | "exit";
 
 export interface Tile {
   type: TileType;
@@ -128,7 +128,7 @@ export interface Tile {
 }
 
 export interface BiomeTheme {
-  id: "forest" | "desert" | "cave" | "neon" | "citadel" | "default";
+  id: "forest" | "desert" | "cave" | "neon" | "citadel" | "underwater" | "volcanic" | "default";
   name: string;
   floorClass: string;
   wallIcon: string;
@@ -175,6 +175,10 @@ export interface LeaderboardEntry {
 export interface LeaderboardResponse {
   entries: LeaderboardEntry[];
   updatedAt: number;
+  chainId: number;
+  source: "on-chain";
+  scannedFromBlock: number;
+  scannedToBlock: number;
 }
 
 export interface NpcDialogueResponse {

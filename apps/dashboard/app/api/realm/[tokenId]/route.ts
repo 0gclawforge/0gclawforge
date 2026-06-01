@@ -6,7 +6,6 @@ import { ethers } from "ethers";
 import { agentInftAbi, downloadFromStorage, uploadJSON } from "@0gclawforge/sdk";
 import type { StorageConfig } from "@0gclawforge/sdk";
 import { getAgentInftAddress, getOgRpcUrl, getOgStorageIndexer } from "../../../../lib/contract-addresses";
-import { updateDungeonLeaderboard } from "../../../../lib/dungeon-leaderboard";
 
 interface RealmProgress {
   completed: boolean;
@@ -275,6 +274,14 @@ export async function POST(req: NextRequest, { params }: { params: { tokenId: st
       return NextResponse.json({ error: "progress.sessionId is required" }, { status: 400 });
     }
 
+    const { rpcUrl, address } = getContractConfig(String(chainId));
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const contract = new ethers.Contract(address, agentInftAbi, provider);
+    const owner = String(await contract.ownerOf(BigInt(tokenId)));
+    if (owner.toLowerCase() !== body.progress.playerAddress.toLowerCase()) {
+      return NextResponse.json({ error: "Only the current on-chain clan owner can save progress" }, { status: 403 });
+    }
+
     const record = {
       kind: "realm-progress",
       payload: {
@@ -290,24 +297,13 @@ export async function POST(req: NextRequest, { params }: { params: { tokenId: st
     };
 
     const upload = await uploadJSON(record, getStorageConfig(chainId, true));
-    const leaderboard = await updateDungeonLeaderboard({
-      tokenId,
-      sessionId: body.progress.sessionId,
-      clanTitle: body.progress.clanTitle || `Clan #${tokenId}`,
-      playerAddress: body.progress.playerAddress,
-      xp: body.progress.xp,
-      level: body.progress.level,
-      completed: body.progress.completed,
-      bossDefeated: body.progress.bossDefeated,
-    });
 
     return NextResponse.json({
       progressRootHash: upload.rootHash,
       storageURI: upload.rootHash,
       storageTxHash: upload.txHash,
       record,
-      leaderboardEntry: leaderboard.entry,
-      leaderboardUpdatedAt: leaderboard.updatedAt,
+      leaderboardPending: body.progress.completed && body.progress.bossDefeated,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown realm progress API error";

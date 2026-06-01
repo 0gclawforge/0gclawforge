@@ -30,7 +30,7 @@ type RealmLayout = {
 };
 
 type RealmVisualTheme = {
-  id: "forest" | "desert" | "cave" | "neon" | "citadel" | "default";
+  id: "forest" | "desert" | "cave" | "neon" | "citadel" | "underwater" | "volcanic" | "default";
   palette: {
     bg: string;
     floor: string;
@@ -43,7 +43,7 @@ type RealmVisualTheme = {
 };
 
 type RealmMapTile = {
-  type: "wall" | "floor" | "npc" | "quest" | "artifact" | "boss" | "decoration" | "exit";
+  type: "wall" | "floor" | "npc" | "quest" | "artifact" | "boss" | "decoration" | "danger" | "exit";
   assetName?: string;
   motif?: string;
 };
@@ -90,8 +90,10 @@ function inferPromptRealm(prompt: string): GeneratedRealm {
 
   const biome =
     /(neon|cyber|punk|street|city|district|arcade|rain-soaked)/.test(lower) ? "neon"
+      : /(underwater|ocean|coral|reef|abyss|sunken|sea|tide)/.test(lower) ? "underwater"
+      : /(volcanic|volcano|lava|magma|inferno|ash|crater)/.test(lower) ? "volcanic"
       : /(desert|dune|sand|oasis|sun)/.test(lower) ? "desert"
-      : /(cave|vault|ember|under|crypt|lava|ruin)/.test(lower) ? "cave"
+      : /(cave|vault|ember|crypt|ruin)/.test(lower) ? "cave"
       : /(castle|fortress|citadel|hall|cathedral)/.test(lower) ? "citadel"
       : "forest";
 
@@ -102,7 +104,9 @@ function inferPromptRealm(prompt: string): GeneratedRealm {
       : "grove";
 
   const landmarkIcons =
-    biome === "neon" ? ["⬢", "✦", "◉", "▣"]
+    biome === "underwater" ? ["🪸", "🐚", "🌊", "✦"]
+      : biome === "volcanic" ? ["🌋", "🔥", "◆", "✦"]
+      : biome === "neon" ? ["⬢", "✦", "◉", "▣"]
       : biome === "desert" ? ["🌵", "☀", "🏺", "✧"]
       : biome === "cave" ? ["🪨", "🕯", "💠", "✦"]
       : biome === "citadel" ? ["🏰", "⚜", "🛡", "✦"]
@@ -123,6 +127,20 @@ function inferPromptRealm(prompt: string): GeneratedRealm {
           motifs: ["neon-kanji", "wet-asphalt", "holo-signs"],
           tileStyle: "cyber",
         }
+      : biome === "underwater"
+        ? {
+            id: "underwater",
+            palette: { bg: "#061b24", floor: "#0c3340", wall: "#08252f", accent: "#38d6cf", glow: "#b8fff4" },
+            motifs: ["coral-arches", "pearl-lights", "tide-ripples"],
+            tileStyle: "organic",
+          }
+        : biome === "volcanic"
+          ? {
+              id: "volcanic",
+              palette: { bg: "#1b0907", floor: "#351310", wall: "#210b0a", accent: "#ff6b35", glow: "#ffd166" },
+              motifs: ["magma-veins", "ash-falls", "obsidian-ridges"],
+              tileStyle: "ruin",
+            }
       : biome === "desert"
         ? {
             id: "desert",
@@ -153,11 +171,11 @@ function inferPromptRealm(prompt: string): GeneratedRealm {
 
   const assets = [
     { type: "biome", name: `${biome[0].toUpperCase()}${biome.slice(1)} Frontier`, description: `A permanent world space shaped by: ${prompt}` },
-    { type: "npc", name: biome === "neon" ? "Neon Fixer" : biome === "citadel" ? "Banner Marshal" : biome === "desert" ? "Dune Oracle" : biome === "cave" ? "Vault Hermit" : "Memory Warden", description: `A guide bound to the realm's core theme: ${prompt}.` },
+    { type: "npc", name: biome === "neon" ? "Neon Fixer" : biome === "underwater" ? "Tide Oracle" : biome === "volcanic" ? "Ash Seer" : biome === "citadel" ? "Banner Marshal" : biome === "desert" ? "Dune Oracle" : biome === "cave" ? "Vault Hermit" : "Memory Warden", description: `A guide bound to the realm's core theme: ${prompt}.` },
     { type: "npc", name: /(merchant|market|trade)/.test(lower) ? "Caravan Broker" : "Rune Keeper", description: "Shares clues about the safest route and what the clan should recover." },
     { type: "quest", name: /(dragon|boss|wyrm)/.test(lower) ? "Break the Tyrant's Hold" : "First Echo", description: `A quest objective pulled from the realm prompt: ${prompt}.` },
     { type: "quest", name: style === "labyrinth" ? "Trace the Hidden Path" : style === "corridor" ? "Hold the Narrow Way" : "Awaken the Inner Gate", description: "A second objective that changes how the player navigates the map." },
-    { type: "artifact", name: biome === "desert" ? "Sunglass Sigil" : biome === "cave" ? "Ember Vault Sigil" : biome === "citadel" ? "Throne Seal" : "Clan Sigil", description: "A clan-bound artifact that proves the realm can evolve." },
+    { type: "artifact", name: biome === "underwater" ? "Abyssal Pearl" : biome === "volcanic" ? "Magma Sigil" : biome === "desert" ? "Sunglass Sigil" : biome === "cave" ? "Ember Vault Sigil" : biome === "citadel" ? "Throne Seal" : "Clan Sigil", description: "A clan-bound artifact that proves the realm can evolve." },
     { type: "artifact", name: /(moon|night|star)/.test(lower) ? "Lunar Thread" : "Memory Prism", description: "A secondary reward tied to the prompt's strongest motif." },
   ];
 
@@ -225,6 +243,12 @@ function inferPromptRealm(prompt: string): GeneratedRealm {
       }
     }
 
+    for (let index = 0; index < 5; index++) {
+      const x = rx(20 + index);
+      const y = ry(20 + index);
+      if (tiles[y][x].type === "floor") mark(x, y, { type: "danger", motif: "!" });
+    }
+
     return { width, height, spawn, boss, tiles };
   };
 
@@ -266,8 +290,8 @@ Return JSON with keys:
 - title (string)
 - lore (string, 2-3 sentences)
 - assets (array of {type: "biome"|"npc"|"quest"|"artifact", name: string, description: string})
-- visualTheme ({id, palette:{bg,floor,wall,accent,glow}, motifs:string[], tileStyle:"organic"|"ruin"|"cyber"|"royal"})
-- map ({width,height,spawn,boss,tiles}) where tiles is a 2D array of {type, assetName?, motif?}
+- visualTheme ({id:"forest"|"desert"|"cave"|"neon"|"citadel"|"underwater"|"volcanic", palette:{bg,floor,wall,accent,glow}, motifs:string[], tileStyle:"organic"|"ruin"|"cyber"|"royal"})
+- map ({width,height,spawn,boss,tiles}) where tiles is a 2D array of {type, assetName?, motif?}; include 3-5 visible "danger" tiles for risk-reward encounters
 - layout ({style: "grove"|"labyrinth"|"corridor"|"sanctum", wallDensity: number between 0.05 and 0.2, landmarkIcons: string[], bossIcon?: string})
 `,
       {

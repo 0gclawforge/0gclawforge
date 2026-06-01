@@ -1,9 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getDungeonLeaderboard } from "../../../../lib/dungeon-leaderboard";
 
-export async function GET() {
+export const dynamic = "force-dynamic";
+
+export async function GET(req: NextRequest) {
   try {
-    const leaderboard = await getDungeonLeaderboard();
+    const chainId = req.nextUrl.searchParams.get("chainId") === "16661" ? 16661 : 16602;
+    const leaderboard = await getDungeonLeaderboard(chainId);
     return NextResponse.json(leaderboard);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown leaderboard error";

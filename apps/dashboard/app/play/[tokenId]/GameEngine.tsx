@@ -9,6 +9,7 @@ import {
   Coins,
   Crown,
   DoorOpen,
+  Flame,
   Heart,
   MessageSquare,
   Loader2,
@@ -22,6 +23,8 @@ import {
   Square,
   Swords,
   Trophy,
+  Volume2,
+  VolumeX,
   type LucideIcon,
 } from "lucide-react";
 import { keccak256, toUtf8Bytes } from "ethers";
@@ -58,6 +61,67 @@ const BOSS_HIT_DC = 11;
 const MOVE_HAZARD_CHANCE = 0.18;
 const PRISM_MEMORIES_REQUIRED = 3;
 const MEMORY_SEAL_COUNT = 3;
+const AUTOSAVE_MOVE_INTERVAL = 8;
+const DRAGON_FIRE_WARNING_MS = 1_350;
+const DRAGON_FIRE_DURATION_MS = 2_400;
+
+type DragonFirePhase = "warning" | "burning";
+
+interface DragonFireTile {
+  x: number;
+  y: number;
+  phase: DragonFirePhase;
+}
+
+type GameSoundCue = "move" | "collect" | "quest" | "hit" | "fire" | "victory" | "save";
+
+function playAudioTone(
+  context: AudioContext,
+  frequency: number,
+  duration: number,
+  delay = 0,
+  type: OscillatorType = "sine",
+  volume = 0.025
+) {
+  const startAt = context.currentTime + delay;
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(frequency, startAt);
+  gain.gain.setValueAtTime(0.0001, startAt);
+  gain.gain.exponentialRampToValueAtTime(volume, startAt + 0.025);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start(startAt);
+  oscillator.stop(startAt + duration + 0.04);
+}
+
+function playGameSound(context: AudioContext, cue: GameSoundCue) {
+  if (cue === "move") playAudioTone(context, 170, 0.08, 0, "triangle", 0.012);
+  if (cue === "collect") {
+    playAudioTone(context, 520, 0.16, 0, "sine", 0.025);
+    playAudioTone(context, 780, 0.2, 0.1, "sine", 0.022);
+  }
+  if (cue === "quest") {
+    playAudioTone(context, 392, 0.18, 0, "triangle", 0.024);
+    playAudioTone(context, 587, 0.24, 0.14, "triangle", 0.022);
+  }
+  if (cue === "hit") playAudioTone(context, 96, 0.22, 0, "sawtooth", 0.036);
+  if (cue === "fire") {
+    playAudioTone(context, 82, 0.62, 0, "sawtooth", 0.035);
+    playAudioTone(context, 126, 0.56, 0.08, "square", 0.018);
+  }
+  if (cue === "victory") {
+    playAudioTone(context, 392, 0.28, 0, "triangle", 0.028);
+    playAudioTone(context, 523, 0.28, 0.18, "triangle", 0.028);
+    playAudioTone(context, 784, 0.42, 0.36, "triangle", 0.026);
+  }
+  if (cue === "save") {
+    playAudioTone(context, 330, 0.16, 0, "sine", 0.018);
+    playAudioTone(context, 440, 0.18, 0.12, "sine", 0.018);
+  }
+}
 
 function createRunSessionId() {
   return `run-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -425,6 +489,37 @@ function tileDistance(a: { x: number; y: number }, b: { x: number; y: number }) 
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
+function dragonFirePattern(grid: Tile[][], playerPos: { x: number; y: number }, pulse: number) {
+  const boss = findTilePositions(grid, (tile) => tile.type === "boss")[0] ?? { x: 8, y: 2 };
+  const positions: Array<{ x: number; y: number }> = [];
+  const push = (x: number, y: number) => {
+    const tile = grid[y]?.[x];
+    if (x > 0 && x < MAP_SIZE - 1 && y > 0 && y < MAP_SIZE - 1 && tile?.passable && tile.type !== "boss") {
+      positions.push({ x, y });
+    }
+  };
+
+  if (pulse % 3 === 0) {
+    const horizontal = Math.abs(playerPos.x - boss.x) > Math.abs(playerPos.y - boss.y);
+    const direction = horizontal
+      ? { x: playerPos.x >= boss.x ? 1 : -1, y: 0 }
+      : { x: 0, y: playerPos.y >= boss.y ? 1 : -1 };
+    for (let step = 1; step <= 8; step++) push(boss.x + direction.x * step, boss.y + direction.y * step);
+  } else if (pulse % 3 === 1) {
+    for (let depth = 1; depth <= 6; depth++) {
+      const width = Math.min(3, Math.ceil(depth / 2));
+      for (let offset = -width; offset <= width; offset++) push(boss.x + offset, boss.y + depth);
+    }
+  } else {
+    for (let x = 1; x < MAP_SIZE - 1; x++) push(x, playerPos.y);
+    for (let y = 1; y < MAP_SIZE - 1; y++) push(playerPos.x, y);
+  }
+
+  return positions.filter((position, index, all) =>
+    all.findIndex((candidate) => candidate.x === position.x && candidate.y === position.y) === index
+  );
+}
+
 function findAutonomousPlayerTarget(grid: Tile[][], state: GameState) {
   const remainingObjectives = findTilePositions(
     grid,
@@ -690,7 +785,15 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
   const [autoMode, setAutoMode] = useState(false);
   const [autoLog, setAutoLog] = useState<string[]>([]);
   const [autoPulse, setAutoPulse] = useState("Idle");
+  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [dragonFireTiles, setDragonFireTiles] = useState<DragonFireTile[]>([]);
+  const [movesSinceAutosave, setMovesSinceAutosave] = useState(0);
   const autoTickRef = useRef(0);
+  const dragonFirePulseRef = useRef(0);
+  const dragonFireTilesRef = useRef<DragonFireTile[]>([]);
+  const dragonFireTimersRef = useRef<number[]>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const saveProgressRef = useRef<(markCompleted: boolean, options?: { quiet?: boolean }) => Promise<void>>(async () => undefined);
   const gridRef = useRef<Tile[][] | null>(null);
   const gameStateRef = useRef<GameState | null>(null);
   const realmPayloadRef = useRef<RealmPayload | null>(null);
@@ -709,6 +812,10 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
   const tokenLeaderboardEntry = leaderboard.find((entry) => entry.tokenId === tokenId) ?? null;
   const xpProgressInLevel = gameState ? gameState.xp % 100 : 0;
   const xpToNextLevel = gameState ? (xpProgressInLevel === 0 ? 100 : 100 - xpProgressInLevel) : 100;
+  const dragonFireByTile = useMemo(
+    () => new Map(dragonFireTiles.map((tile) => [`${tile.x}:${tile.y}`, tile.phase])),
+    [dragonFireTiles]
+  );
 
   useEffect(() => {
     gridRef.current = grid;
@@ -737,6 +844,17 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
   useEffect(() => {
     bossHpRef.current = bossHp;
   }, [bossHp]);
+
+  useEffect(() => {
+    dragonFireTilesRef.current = dragonFireTiles;
+  }, [dragonFireTiles]);
+
+  useEffect(() => {
+    return () => {
+      dragonFireTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+      audioContextRef.current?.close().catch(() => undefined);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -811,6 +929,11 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
     setBossHp(bossMaxHp(realmPayload));
     setCompleted(false);
     setSaveStatus("");
+    setDragonFireTiles([]);
+    dragonFireTilesRef.current = [];
+    dragonFireTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    dragonFireTimersRef.current = [];
+    setMovesSinceAutosave(0);
   }, [realmPayload]);
 
   useEffect(() => {
@@ -822,6 +945,102 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
   const addLog = useCallback((message: string | string[]) => {
     setGameState((state) => (state ? { ...state, gameLog: appendLog(state.gameLog, message) } : state));
   }, []);
+
+  const playCue = useCallback((cue: GameSoundCue) => {
+    const context = audioContextRef.current;
+    if (!audioEnabled || !context) return;
+    if (context.state === "suspended") void context.resume();
+    playGameSound(context, cue);
+  }, [audioEnabled]);
+
+  const toggleAudio = useCallback(async () => {
+    if (audioEnabled) {
+      setAudioEnabled(false);
+      return;
+    }
+
+    const context = audioContextRef.current ?? new AudioContext();
+    audioContextRef.current = context;
+    if (context.state === "suspended") await context.resume();
+    setAudioEnabled(true);
+    playGameSound(context, "quest");
+  }, [audioEnabled]);
+
+  useEffect(() => {
+    if (!audioEnabled) return;
+    let note = 0;
+    const ambientNotes = [146.83, 196, 220, 174.61];
+    const interval = window.setInterval(() => {
+      const context = audioContextRef.current;
+      if (!context || context.state !== "running") return;
+      playAudioTone(context, ambientNotes[note % ambientNotes.length]!, 1.7, 0, "sine", 0.008);
+      note += 1;
+    }, 1_900);
+    return () => window.clearInterval(interval);
+  }, [audioEnabled]);
+
+  const igniteDragonBreath = useCallback(() => {
+    const currentGrid = gridRef.current;
+    const currentState = gameStateRef.current;
+    if (!currentGrid || !currentState || currentState.bossDefeated || dragonFireTilesRef.current.length > 0) return;
+
+    dragonFirePulseRef.current += 1;
+    const pattern = dragonFirePattern(currentGrid, currentState.playerPos, dragonFirePulseRef.current);
+    if (pattern.length === 0) return;
+
+    const warningTiles = pattern.map((tile) => ({ ...tile, phase: "warning" as const }));
+    dragonFireTilesRef.current = warningTiles;
+    setDragonFireTiles(warningTiles);
+    addLog(`${themeRef.current.bossName} draws breath. Move before the marked tiles ignite.`);
+    setToast("Dragon breath incoming. Move!");
+    playCue("fire");
+
+    const igniteTimer = window.setTimeout(() => {
+      const burningTiles = pattern.map((tile) => ({ ...tile, phase: "burning" as const }));
+      dragonFireTilesRef.current = burningTiles;
+      setDragonFireTiles(burningTiles);
+
+      const state = gameStateRef.current;
+      if (!state || !pattern.some((tile) => tile.x === state.playerPos.x && tile.y === state.playerPos.y)) return;
+      const damage = 8 + rollDie(6);
+      playCue("hit");
+      setGameState((current) => {
+        if (!current) return current;
+        const defeated = current.hp - damage <= 0;
+        const nextState = {
+          ...current,
+          hp: defeated ? current.maxHp : current.hp - damage,
+          gold: defeated ? Math.floor(current.gold / 2) : current.gold,
+          playerPos: defeated ? realmSpawn(realmPayloadRef.current) : current.playerPos,
+          gameLog: appendLog(
+            current.gameLog,
+            defeated
+              ? `${themeRef.current.bossName}'s fire overwhelms you. You return to the realm gate with half your gold.`
+              : `${themeRef.current.bossName}'s fire burns you for ${damage} damage.`
+          ),
+        };
+        gameStateRef.current = nextState;
+        return nextState;
+      });
+    }, DRAGON_FIRE_WARNING_MS);
+
+    const clearTimer = window.setTimeout(() => {
+      dragonFireTilesRef.current = [];
+      setDragonFireTiles([]);
+    }, DRAGON_FIRE_WARNING_MS + DRAGON_FIRE_DURATION_MS);
+
+    dragonFireTimersRef.current.push(igniteTimer, clearTimer);
+  }, [addLog, playCue]);
+
+  useEffect(() => {
+    if (!gameState || gameState.bossDefeated || modal) return;
+    const firstBreath = window.setTimeout(igniteDragonBreath, 1_600);
+    const interval = window.setInterval(igniteDragonBreath, 7_200);
+    return () => {
+      window.clearTimeout(firstBreath);
+      window.clearInterval(interval);
+    };
+  }, [gameState?.bossDefeated, igniteDragonBreath, modal]);
 
   const pushAutoLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -849,8 +1068,9 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
       });
       replaceTile(x, y, { ...EMPTY_TILE });
       setToast(`${asset.name} added to inventory`);
+      playCue("collect");
     },
-    [replaceTile]
+    [playCue, replaceTile]
   );
 
   const triggerInteraction = useCallback(
@@ -879,15 +1099,23 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
         return;
       }
 
+      const enteredDragonFire = dragonFireTilesRef.current.some(
+        (fireTile) => fireTile.phase === "burning" && fireTile.x === next.x && fireTile.y === next.y
+      );
       const hazardTriggered =
+        !enteredDragonFire &&
         (tile.type === "floor" || tile.type === "decoration") &&
         Math.random() < MOVE_HAZARD_CHANCE;
-      const hazardDamage = hazardTriggered ? 2 + rollDie(4) + Math.max(0, Math.floor(gameState.level / 2)) : 0;
-      const survivedHazard = !hazardTriggered || gameState.hp - hazardDamage > 0;
+      const hazardDamage = enteredDragonFire
+        ? 8 + rollDie(6)
+        : hazardTriggered
+          ? 2 + rollDie(4) + Math.max(0, Math.floor(gameState.level / 2))
+          : 0;
+      const survivedHazard = hazardDamage === 0 || gameState.hp - hazardDamage > 0;
 
       setGameState((state) => {
         if (!state) return state;
-        if (!hazardTriggered) return { ...state, playerPos: next };
+        if (!hazardTriggered && !enteredDragonFire) return { ...state, playerPos: next };
         return {
           ...state,
           hp: survivedHazard ? state.hp - hazardDamage : state.maxHp,
@@ -896,15 +1124,21 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
           gameLog: appendLog(
             state.gameLog,
             survivedHazard
-              ? `A roaming dungeon hazard catches you for ${hazardDamage} damage.`
-              : `A roaming dungeon hazard finishes you off. You stagger back to the gate and drop some gold.`
+              ? enteredDragonFire
+                ? `${theme.bossName}'s burning trail scorches you for ${hazardDamage} damage.`
+                : `A roaming dungeon hazard catches you for ${hazardDamage} damage.`
+              : enteredDragonFire
+                ? `${theme.bossName}'s burning trail overwhelms you. You stagger back to the gate and drop some gold.`
+                : `A roaming dungeon hazard finishes you off. You stagger back to the gate and drop some gold.`
           ),
         };
       });
+      playCue(hazardDamage > 0 ? "hit" : "move");
       if (!survivedHazard) return;
+      setMovesSinceAutosave((count) => Math.min(AUTOSAVE_MOVE_INTERVAL, count + 1));
       triggerInteraction(tile, next.x, next.y);
     },
-    [addLog, completed, gameState, grid, modal, realmPayload, triggerInteraction]
+    [addLog, completed, gameState, grid, modal, playCue, realmPayload, theme.bossName, triggerInteraction]
   );
 
   useEffect(() => {
@@ -1027,6 +1261,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
         );
       });
       setToast("Prism Memory claimed");
+      playCue("collect");
       setModal((current) => (
         current && current.type === "npc"
           ? { ...current, trialResolved: true, trialFeedback: `Correct. ${asset.name} entrusts you with a Prism Memory.` }
@@ -1044,12 +1279,13 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
         gameLog: appendLog(state.gameLog, `${asset.name} rejects your answer. The memory backlash costs 9 HP.`),
       };
     });
+    playCue("hit");
     setModal((current) => (
       current && current.type === "npc"
         ? { ...current, trialFeedback: `Wrong answer. Hint: ${question.loreHint}` }
         : current
     ));
-  }, []);
+  }, [playCue]);
 
   const answerBossSealTrial = useCallback((question: RealmTrialQuestion, answer: string) => {
     if (!realmPayload) return;
@@ -1080,6 +1316,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
           : current
       ));
       setToast("Memory Seal broken");
+      playCue("quest");
       return;
     }
 
@@ -1092,12 +1329,13 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
         gameLog: appendLog(state.gameLog, `${theme.bossName} rejects your answer. Memory backlash deals 12 HP.`),
       };
     });
+    playCue("hit");
     setModal((current) => (
       current && current.type === "boss"
         ? { ...current, trialFeedback: `Wrong answer. Hint: ${question.loreHint}` }
         : current
     ));
-  }, [realmPayload, theme.bossName]);
+  }, [playCue, realmPayload, theme.bossName]);
 
   const attemptQuest = (asset: RealmAsset) => {
     if (!gameState) return;
@@ -1117,6 +1355,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
       const pos = gameState.playerPos;
       replaceTile(pos.x, pos.y, { ...EMPTY_TILE });
       setModal(null);
+      playCue("quest");
       return;
     }
 
@@ -1129,6 +1368,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
         gameLog: appendLog(state.gameLog, `Quest "${asset.name}" failed. Roll ${roll} + level ${state.level} = ${total}. Lose 14 HP.`),
       };
     });
+    playCue("hit");
     setModal({ type: "quest", asset, result: `Roll ${roll} + level ${gameState.level} = ${total}. DC ${QUEST_DC} resisted you.` });
   };
 
@@ -1194,6 +1434,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
       });
       setModal(null);
       setToast("Boss defeated. Exit opened.");
+      playCue("victory");
       return;
     }
 
@@ -1214,6 +1455,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
           : state
       );
       setModal(null);
+      playCue("hit");
       return;
     }
 
@@ -1228,6 +1470,8 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
         : state
     );
     setModal({ type: "boss", result: `${hit ? `${damage} damage dealt.` : "Attack missed."} Boss countered for ${bossDamage}.` });
+    playCue("hit");
+    igniteDragonBreath();
   };
 
   const runAutonomousWorldAction = useCallback(() => {
@@ -1276,6 +1520,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
           }
           gridAfter = updateTile(gridAfter, activeStep.x, activeStep.y, { ...EMPTY_TILE });
           pulse = `Collected artifact: ${artifact.name}`;
+          playCue("collect");
         } else if (tile.type === "quest" && tile.asset) {
           const quest = tile.asset;
           const roll = rollDie(20);
@@ -1291,6 +1536,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
             }
             gridAfter = updateTile(gridAfter, activeStep.x, activeStep.y, { ...EMPTY_TILE });
             pulse = `Completed quest: ${quest.name}`;
+            playCue("quest");
           } else {
             stateAfter = {
               ...stateAfter,
@@ -1301,6 +1547,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
               ),
             };
             pulse = `Quest attempt failed: ${quest.name}`;
+            playCue("hit");
           }
         } else if (tile.type === "npc" && tile.asset) {
           const npc = tile.asset;
@@ -1400,6 +1647,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
               );
               setToast("Autonomous clan defeated the boss. Exit opened.");
               pulse = `Boss defeated: ${currentTheme.bossName}`;
+              playCue("victory");
             } else {
               const bossDamage = 7 + rollDie(8) + Math.max(0, Math.floor(currentRealm.assets.length / 2));
               const nextHp = stateAfter.hp - bossDamage;
@@ -1420,6 +1668,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
                   ),
                 };
                 pulse = `Respawned after boss defeat`;
+                playCue("hit");
               } else {
                 stateAfter = {
                   ...stateAfter,
@@ -1432,6 +1681,8 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
                   ),
                 };
                 pulse = `Boss exchange: ${nextBossHp}/${bossMaxHp(currentRealm)} HP remains`;
+                playCue("hit");
+                igniteDragonBreath();
               }
             }
           }
@@ -1547,9 +1798,9 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
     const message = `The clan reshaped a ${currentTheme.name.toLowerCase()} tile at (${target.x}, ${target.y}).`;
     addLog(message);
     pushAutoLog(message);
-  }, [addLog, pushAutoLog]);
+  }, [addLog, igniteDragonBreath, playCue, pushAutoLog]);
 
-  const saveProgress = async (markCompleted: boolean) => {
+  const saveProgress = async (markCompleted: boolean, options?: { quiet?: boolean }) => {
     if (!gameState || !realmPayload || !address || !contractAddress || tokenIdBig === undefined) return;
     if (!canPersist) {
       setSaveStatus("Spectator mode can explore, but only the clan owner can persist progress.");
@@ -1557,7 +1808,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
     }
 
     setSaving(true);
-    setSaveStatus("Saving progress to 0G Storage...");
+    setSaveStatus(options?.quiet ? "Auto-saving progress to 0G Storage..." : "Saving progress to 0G Storage...");
 
     const progress: SaveProgressPayload = {
       completed: markCompleted,
@@ -1639,8 +1890,11 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
         setSaveStatus(`Completion recorded on-chain: ${hash}`);
         addLog(`Realm completion saved to 0G Storage and recorded on-chain.`);
       } else {
-        setSaveStatus(`Progress saved to 0G Storage: ${payload.progressRootHash}`);
-        addLog("Progress saved to 0G Storage.");
+        setSaveStatus(`${options?.quiet ? "Auto-saved" : "Progress saved"} to 0G Storage: ${payload.progressRootHash}`);
+        if (!options?.quiet) {
+          addLog("Progress saved to 0G Storage.");
+          playCue("save");
+        }
       }
     } catch (error) {
       setSaveStatus(error instanceof Error ? error.message : "Progress save failed");
@@ -1648,6 +1902,13 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
       setSaving(false);
     }
   };
+  saveProgressRef.current = saveProgress;
+
+  useEffect(() => {
+    if (!canPersist || saving || movesSinceAutosave < AUTOSAVE_MOVE_INTERVAL) return;
+    setMovesSinceAutosave(0);
+    void saveProgressRef.current(false, { quiet: true });
+  }, [canPersist, movesSinceAutosave, saving]);
 
   const sendChatMessage = async () => {
     if (!chatInput.trim() || chatLoading || !gameState) return;
@@ -1774,18 +2035,33 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
             <p className="text-xs uppercase tracking-[0.2em] text-gold">{theme.name} Tile Realm</p>
             <h1 className="mt-1 text-2xl font-black text-parchment md:text-4xl">{realmPayload.title}</h1>
           </div>
-          <div className="flex items-center justify-center gap-3 text-sm text-stone">
+          <div className="flex flex-wrap items-center justify-center gap-3 text-sm text-stone">
             <Crown className="h-4 w-4 text-gold" />
             Clan #{tokenId}
             <span className="rounded border border-white/10 px-2 py-1 text-xs text-parchment">
               {canPersist ? "Owner Save" : "Spectator"}
             </span>
+            <button
+              type="button"
+              onClick={() => void toggleAudio()}
+              title={audioEnabled ? "Mute realm audio" : "Enable realm audio"}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-black/20 text-gold transition hover:border-gold/40 hover:bg-gold/10"
+            >
+              {audioEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+            </button>
           </div>
         </header>
 
         <section className="grid gap-5 lg:grid-cols-[minmax(0,680px)_1fr]">
           <div className="space-y-5">
             <div className="overflow-x-auto rounded-md border border-white/10 bg-black/35 p-4 shadow-2xl shadow-black/40">
+              <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-ember/40 bg-ember/10 px-3 py-2 text-xs text-parchment">
+                <span className="inline-flex items-center gap-2 font-semibold">
+                  <Flame className="h-4 w-4 text-ember" />
+                  {gameState.bossDefeated ? `${theme.bossName} has fallen` : `${theme.bossName} is breathing fire`}
+                </span>
+                <span className="font-mono text-ember">{gameState.bossDefeated ? "DEFEATED" : "DRAGON ACTIVE"}</span>
+              </div>
               <div
                 className="mx-auto grid w-max gap-1"
                 style={{ gridTemplateColumns: `repeat(${MAP_SIZE}, 40px)` }}
@@ -1798,6 +2074,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
                       tile={tile}
                       theme={theme}
                       isPlayer={gameState.playerPos.x === x && gameState.playerPos.y === y}
+                      firePhase={dragonFireByTile.get(`${x}:${y}`)}
                     />
                   ))
                 )}
@@ -1875,6 +2152,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
                   <li>Artifacts add to your inventory and grant XP.</li>
                   <li>NPCs now test your understanding of the realm; correct answers award Prism Memories.</li>
                   <li>The boss is immune until you gather enough Prism Memories and break every Memory Seal.</li>
+                  <li>When the dragon marks tiles, move quickly. Warning tiles ignite into damaging fire.</li>
                   <li>Quests now check against DC {QUEST_DC}; failures hit harder.</li>
                   <li>Empty tiles can trigger roaming hazards, so every step matters.</li>
                 </ul>
@@ -1974,7 +2252,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
               </button>
               <p className="text-xs leading-5 text-stone">
                 {canPersist
-                  ? "Manual saves persist progress to 0G Storage without a wallet transaction. Only the final completion flow records an on-chain clan evolution."
+                  ? `Progress auto-saves every ${AUTOSAVE_MOVE_INTERVAL} moves. Manual saves persist immediately without a wallet transaction. Only the final completion flow records an on-chain clan evolution.`
                   : "Connect as the clan owner to enable progress saves. Movement, combat, and NPC interactions never require a wallet transaction."}
               </p>
               {saveStatus && <p className="break-words rounded-md border border-white/10 bg-black/25 p-3 font-mono text-xs text-parchment">{saveStatus}</p>}
@@ -2082,9 +2360,19 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
   );
 }
 
-function TileCell({ tile, theme, isPlayer }: { tile: Tile; theme: BiomeTheme; isPlayer: boolean }) {
+function TileCell({
+  tile,
+  theme,
+  isPlayer,
+  firePhase,
+}: {
+  tile: Tile;
+  theme: BiomeTheme;
+  isPlayer: boolean;
+  firePhase?: DragonFirePhase;
+}) {
   const type = isPlayer ? "player" : tile.type;
-  const icon = isPlayer ? "⚔️" : tile.icon;
+  const icon = isPlayer ? "⚔️" : type === "boss" ? "\u{1F409}" : tile.icon;
   const className =
     type === "player"
       ? "tile-player border-gold bg-gold/20 text-gold"
@@ -2131,11 +2419,18 @@ function TileCell({ tile, theme, isPlayer }: { tile: Tile; theme: BiomeTheme; is
 
   return (
     <div
-      className={`flex h-10 w-10 select-none items-center justify-center rounded-sm border text-lg transition hover:shadow-glow ${className}`}
-      title={tile.asset?.name ?? tile.type}
+      className={`relative flex h-10 w-10 select-none items-center justify-center overflow-hidden rounded-sm border text-lg transition hover:shadow-glow ${className} ${
+        firePhase === "warning" ? "tile-fire-warning" : firePhase === "burning" ? "tile-fire-burning" : ""
+      }`}
+      title={type === "boss" ? `${theme.bossName} - realm dragon` : tile.asset?.name ?? tile.type}
       style={{ backgroundImage, backgroundSize: "cover", backgroundPosition: "center" }}
     >
-      {icon}
+      <span className="relative z-10">{icon}</span>
+      {firePhase && (
+        <span className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center text-xl" aria-hidden>
+          {firePhase === "burning" ? "\u{1F525}" : "!"}
+        </span>
+      )}
     </div>
   );
 }

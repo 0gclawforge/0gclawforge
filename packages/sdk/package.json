@@ -18,12 +18,18 @@
   "dependencies": {
     "@0gfoundation/0g-ts-sdk": "^1.2.8",
     "@0gfoundation/0g-storage-ts-sdk": "^1.2.9",
+    "@0gfoundation/0g-compute-ts-sdk": "^0.8.3",
     "@0glabs/0g-serving-broker": "^0.7.8",
+    "@foundryprotocol/0gkit-compute": "^0.1.0",
+    "circomlibjs": "^0.1.6",
+    "crypto-js": "^4.2.0",
     "@foundryprotocol/0gkit-storage": "^0.1.0",
     "ethers": "^6.11.0",
     "openai": "^4.40.0"
   },
   "devDependencies": {
+    "@types/circomlibjs": "^0.1.6",
+    "@types/crypto-js": "^4.2.2",
     "@types/node": "^20.11.0",
     "typescript": "^5.4.0"
   }

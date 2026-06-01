@@ -29,12 +29,18 @@
     "@foundryprotocol/0gkit-da": "^0.1.0",
     "@foundryprotocol/0gkit-attestation": "^0.1.0",
     "@foundryprotocol/0gkit-chain": "^0.1.0",
+    "@0gfoundation/0g-compute-ts-sdk": "^0.8.3",
+    "@0gfoundation/0g-storage-ts-sdk": "^1.2.9",
     "@0gclawforge/sdk": "workspace:*",
+    "circomlibjs": "^0.1.6",
+    "crypto-js": "^4.2.0",
     "viem": "^2.21.0",
     "ethers": "^6.11.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "@types/circomlibjs": "^0.1.6",
+    "@types/crypto-js": "^4.2.2",
     "tsx": "^4.7.0",
     "typescript": "^5.4.0"
   }

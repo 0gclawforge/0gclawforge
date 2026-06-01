@@ -1,9 +1,19 @@
 import { Indexer, MemData } from "@0gfoundation/0g-ts-sdk";
+import { Storage as KitStorage } from "@foundryprotocol/0gkit-storage";
 import { ethers } from "ethers";
 import type { StorageConfig, UploadResult } from "./types";
 
 function normalizeStorageRoot(rootHashOrUri: string): string {
   return rootHashOrUri.replace(/^0g:\/\//i, "").replace(/^zg:\/\//i, "").trim();
+}
+
+function downloadClient(config: StorageConfig): KitStorage {
+  return new KitStorage({
+    network: config.indexerUrl.includes("testnet") ? "galileo" : "aristotle",
+    indexerUrl: config.indexerUrl,
+    rpcUrl: config.rpcUrl,
+    privateKey: config.privateKey,
+  });
 }
 
 async function resolveUploadOptions(provider: ethers.JsonRpcProvider): Promise<{
@@ -79,6 +89,31 @@ export async function downloadFromStorage(
   const indexer = new Indexer(config.indexerUrl);
   const err = await indexer.download(rootHash, outputPath, true);
   if (err !== null) throw new Error(`0G Storage download failed: ${err}`);
+}
+
+export async function downloadBytes(
+  rootHashOrUri: string,
+  config: StorageConfig
+): Promise<Uint8Array> {
+  const rootHash = normalizeStorageRoot(rootHashOrUri);
+
+  if (/^https?:\/\//i.test(rootHash)) {
+    const response = await fetch(rootHash);
+    if (!response.ok) {
+      throw new Error(`0G Storage download failed: ${response.status} ${response.statusText}`);
+    }
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
+  return downloadClient(config).download(rootHash);
+}
+
+export async function downloadJSON<T = unknown>(
+  rootHashOrUri: string,
+  config: StorageConfig
+): Promise<T> {
+  const bytes = await downloadBytes(rootHashOrUri, config);
+  return JSON.parse(new TextDecoder().decode(bytes)) as T;
 }
 
 export async function uploadAgentIntelligence(

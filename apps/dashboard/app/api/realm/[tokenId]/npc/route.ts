@@ -1,8 +1,5 @@
-import { readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { NextRequest, NextResponse } from "next/server";
-import { downloadFromStorage, ZGComputeClient, type StorageConfig } from "@0gclawforge/sdk";
+import { downloadJSON, ZGComputeClient, type StorageConfig } from "@0gclawforge/sdk";
 import { ethers } from "ethers";
 import { agentInftAbi } from "@0gclawforge/sdk";
 import {
@@ -68,25 +65,14 @@ function cleanText(value: unknown, maxLength = 220) {
   return `${text.slice(0, maxLength - 3).trim()}...`;
 }
 
-async function downloadRealm(rootHash: string, tokenId: string, chainId: number) {
-  const tmpPath = join(tmpdir(), `0gclawforge-npc-realm-${tokenId}-${Date.now()}.json`);
+async function downloadRealm(rootHash: string, _tokenId: string, chainId: number) {
   try {
-    await downloadFromStorage(rootHash, tmpPath, getStorageConfig(chainId));
-    return JSON.parse(await readFile(tmpPath, "utf8"));
+    return await downloadJSON<any>(rootHash, getStorageConfig(chainId));
   } catch (err) {
     if (chainId !== 16602) {
-      await rm(tmpPath, { force: true });
-      const fbPath = join(tmpdir(), `0gclawforge-npc-realm-${tokenId}-fb-${Date.now()}.json`);
-      try {
-        await downloadFromStorage(rootHash, fbPath, getStorageConfig(16602));
-        return JSON.parse(await readFile(fbPath, "utf8"));
-      } finally {
-        await rm(fbPath, { force: true });
-      }
+      return await downloadJSON<any>(rootHash, getStorageConfig(16602));
     }
     throw err;
-  } finally {
-    await rm(tmpPath, { force: true });
   }
 }
 

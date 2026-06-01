@@ -167,7 +167,7 @@ export default function PlayDiscoveryPage() {
 
     async function loadLeaderboard() {
       try {
-        const response = await fetch(`/api/realm/leaderboard?chainId=${chainId}`, { cache: "no-store" });
+        const response = await fetch(`/api/realm/leaderboard?chainId=${chainId}&mode=tournament`, { cache: "no-store" });
         const payload = (await response.json()) as LeaderboardResponse & { error?: string };
         if (!response.ok) throw new Error(payload.error || "Failed to load leaderboard");
         if (!cancelled) {

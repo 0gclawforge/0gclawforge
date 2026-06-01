@@ -938,7 +938,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
 
     async function loadLeaderboard() {
       try {
-        const response = await fetch(`/api/realm/leaderboard?chainId=${chainId}`, { cache: "no-store" });
+        const response = await fetch(`/api/realm/leaderboard?chainId=${chainId}&mode=general`, { cache: "no-store" });
         const payload = (await response.json()) as LeaderboardResponse & { error?: string };
         if (!response.ok) throw new Error(payload.error || "Failed to load leaderboard");
         if (!cancelled) {
@@ -2229,7 +2229,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
               <StateRow label="Gold" value={String(gameState.gold)} />
             </Panel>
 
-            <Panel title="XP Leaderboard" icon={Trophy}>
+            <Panel title="General Leaderboard" icon={Trophy}>
               {leaderboardStatus && (
                 <p className="rounded-md border border-white/10 bg-black/25 p-3 text-xs text-stone">{leaderboardStatus}</p>
               )}

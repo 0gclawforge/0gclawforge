@@ -177,6 +177,8 @@ export interface LeaderboardResponse {
   updatedAt: number;
   chainId: number;
   source: "on-chain";
+  mode: "general" | "tournament";
+  baseline: "configured" | "rolling-window";
   scannedFromBlock: number;
   scannedToBlock: number;
 }

@@ -46,15 +46,19 @@ export interface DungeonLeaderboardResponse {
   updatedAt: number;
   chainId: number;
   source: "on-chain";
+  mode: DungeonLeaderboardMode;
+  baseline: "configured" | "rolling-window";
   scannedFromBlock: number;
   scannedToBlock: number;
 }
+
+export type DungeonLeaderboardMode = "general" | "tournament";
 
 const METADATA_EVENT = "event AgentMetadataUpdated(uint256 indexed tokenId, bytes32 newHash, string newStorageURI)";
 const LOG_CHUNK_SIZE = 25_000;
 const DEFAULT_LOOKBACK_BLOCKS = 250_000;
 const CACHE_TTL_MS = 30_000;
-const leaderboardCache = new Map<number, { expiresAt: number; value: DungeonLeaderboardResponse }>();
+const leaderboardCache = new Map<string, { expiresAt: number; value: DungeonLeaderboardResponse }>();
 
 function normalizeChainId(chainId?: number) {
   return chainId === 16661 ? 16661 : 16602;
@@ -67,20 +71,24 @@ function storageConfig(chainId: number): StorageConfig {
   };
 }
 
-function configuredLeaderboardBlock(chainId: number, latestBlock: number) {
+function configuredLeaderboardBlock(chainId: number, latestBlock: number, mode: DungeonLeaderboardMode) {
   const raw =
-    chainId === 16661
-      ? process.env.OG_LEADERBOARD_FROM_BLOCK_MAINNET
-      : process.env.OG_LEADERBOARD_FROM_BLOCK_GALILEO;
+    mode === "tournament"
+      ? chainId === 16661
+        ? process.env.OG_LEADERBOARD_FROM_BLOCK_MAINNET
+        : process.env.OG_LEADERBOARD_FROM_BLOCK_GALILEO
+      : chainId === 16661
+        ? process.env.OG_GENERAL_LEADERBOARD_FROM_BLOCK_MAINNET
+        : process.env.OG_GENERAL_LEADERBOARD_FROM_BLOCK_GALILEO;
   const configured = Number(raw);
   if (Number.isSafeInteger(configured) && configured >= 0) {
-    return Math.min(configured, latestBlock);
+    return { fromBlock: Math.min(configured, latestBlock), baseline: "configured" as const };
   }
 
   const lookback = Number(process.env.OG_LEADERBOARD_LOOKBACK_BLOCKS);
   const boundedLookback =
     Number.isSafeInteger(lookback) && lookback > 0 ? lookback : DEFAULT_LOOKBACK_BLOCKS;
-  return Math.max(0, latestBlock - boundedLookback);
+  return { fromBlock: Math.max(0, latestBlock - boundedLookback), baseline: "rolling-window" as const };
 }
 
 function safeScore(value: unknown) {
@@ -167,15 +175,20 @@ function aggregateSessions(sessions: AnchoredDungeonSession[]) {
   return sortEntries([...byToken.values()]);
 }
 
-export async function getDungeonLeaderboard(requestedChainId?: number, options?: { fresh?: boolean }) {
+export async function getDungeonLeaderboard(
+  requestedChainId?: number,
+  options?: { fresh?: boolean; mode?: DungeonLeaderboardMode }
+) {
   const chainId = normalizeChainId(requestedChainId);
-  const cached = leaderboardCache.get(chainId);
+  const mode = options?.mode === "tournament" ? "tournament" : "general";
+  const cacheKey = `${chainId}:${mode}`;
+  const cached = leaderboardCache.get(cacheKey);
   if (!options?.fresh && cached && cached.expiresAt > Date.now()) return cached.value;
 
   const provider = new ethers.JsonRpcProvider(getOgRpcUrl(chainId));
   const address = getAgentInftAddress(chainId);
   const latestBlock = await provider.getBlockNumber();
-  const fromBlock = configuredLeaderboardBlock(chainId, latestBlock);
+  const { fromBlock, baseline } = configuredLeaderboardBlock(chainId, latestBlock, mode);
   const { iface, logs } = await scanMetadataLogs(provider, address, fromBlock, latestBlock);
   const blockTimestamps = new Map<number, number>();
   const sessions = new Map<string, AnchoredDungeonSession>();
@@ -227,9 +240,11 @@ export async function getDungeonLeaderboard(requestedChainId?: number, options?:
     updatedAt: Date.now(),
     chainId,
     source: "on-chain",
+    mode,
+    baseline,
     scannedFromBlock: fromBlock,
     scannedToBlock: latestBlock,
   };
-  leaderboardCache.set(chainId, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+  leaderboardCache.set(cacheKey, { value, expiresAt: Date.now() + CACHE_TTL_MS });
   return value;
 }

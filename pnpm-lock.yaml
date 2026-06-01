@@ -48,6 +48,9 @@ importers:
       '@0gclawforge/agents':
         specifier: workspace:*
         version: link:../../agents
+      '@0gclawforge/foundry':
+        specifier: workspace:*
+        version: link:../../packages/foundry
       '@0gclawforge/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk

@@ -6,6 +6,28 @@
 
 **Community:** [Twitter/X](https://x.com/0gclawforge) | [Discord](https://discord.gg/FfjHj7Y4U8) | [Email](mailto:0gclawforge@gmail.com)
 
+## Foundry Protocol bridge
+
+This repo ships a first-class [Foundry Protocol](https://github.com/rajkaria/0G-ai-kit)
+bridge — `@0gclawforge/foundry` — built on top of the open-source
+`@foundryprotocol/0gkit-*` toolkit. It adds four capabilities on top of the
+existing 0GClawForge SDK, all opt-in and additive:
+
+- **0G Data Availability** — anchor any clan event (quest, vote, realm
+  snapshot, evolution, memory delta) on 0G DA for a tiny digest instead of a
+  full Storage upload.
+- **Foundry-shape attestation envelopes** — sign + verify `foundry/eval-result/v1`
+  envelopes for every quest outcome, with the broker's TEE attestation
+  embedded. Anyone can verify offline.
+- **React hooks for 0G** — `useClanDA`, `useUpload`, `useDownload`,
+  `useInference`, `useAttestation`. A drop-in `/foundry` route demonstrates
+  the panel.
+- **MCP server (`@0gclawforge/mcp`)** — every clan + 0G primitive as an MCP
+  tool, ready for Claude Code / Cursor / Cline / any agent runtime.
+
+See [`docs/foundry/integration.md`](docs/foundry/integration.md) for the full
+architecture, envelope spec, and quickstarts.
+
 ## Features
 
 ### Wallet Connect (RainbowKit)

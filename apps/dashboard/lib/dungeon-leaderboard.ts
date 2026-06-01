@@ -56,9 +56,20 @@ export type DungeonLeaderboardMode = "general" | "tournament";
 
 const METADATA_EVENT = "event AgentMetadataUpdated(uint256 indexed tokenId, bytes32 newHash, string newStorageURI)";
 const LOG_CHUNK_SIZE = 25_000;
+const LOG_SCAN_CONCURRENCY = 12;
+const PROGRESS_DOWNLOAD_CONCURRENCY = 4;
 const DEFAULT_LOOKBACK_BLOCKS = 250_000;
+const DEFAULT_GENERAL_LEADERBOARD_FROM_BLOCK_MAINNET = 33_310_093;
 const CACHE_TTL_MS = 30_000;
-const leaderboardCache = new Map<string, { expiresAt: number; value: DungeonLeaderboardResponse }>();
+const globalForLeaderboard = globalThis as typeof globalThis & {
+  dungeonLeaderboardCache?: Map<string, { expiresAt: number; value: DungeonLeaderboardResponse }>;
+};
+const leaderboardCache =
+  globalForLeaderboard.dungeonLeaderboardCache ??
+  (globalForLeaderboard.dungeonLeaderboardCache = new Map<
+    string,
+    { expiresAt: number; value: DungeonLeaderboardResponse }
+  >());
 
 function normalizeChainId(chainId?: number) {
   return chainId === 16661 ? 16661 : 16602;
@@ -83,6 +94,9 @@ function configuredLeaderboardBlock(chainId: number, latestBlock: number, mode: 
   const configured = Number(raw);
   if (Number.isSafeInteger(configured) && configured >= 0) {
     return { fromBlock: Math.min(configured, latestBlock), baseline: "configured" as const };
+  }
+  if (mode === "general" && chainId === 16661) {
+    return { fromBlock: DEFAULT_GENERAL_LEADERBOARD_FROM_BLOCK_MAINNET, baseline: "configured" as const };
   }
 
   const lookback = Number(process.env.OG_LEADERBOARD_LOOKBACK_BLOCKS);
@@ -115,17 +129,25 @@ async function scanMetadataLogs(provider: ethers.JsonRpcProvider, address: strin
   const event = iface.getEvent("AgentMetadataUpdated");
   if (!event) throw new Error("AgentMetadataUpdated event ABI is unavailable");
 
-  const logs: ethers.Log[] = [];
+  const ranges: Array<{ fromBlock: number; toBlock: number }> = [];
   for (let start = fromBlock; start <= toBlock; start += LOG_CHUNK_SIZE) {
-    const end = Math.min(toBlock, start + LOG_CHUNK_SIZE - 1);
-    logs.push(
-      ...(await provider.getLogs({
-        address,
-        fromBlock: start,
-        toBlock: end,
-        topics: [event.topicHash],
-      }))
+    ranges.push({ fromBlock: start, toBlock: Math.min(toBlock, start + LOG_CHUNK_SIZE - 1) });
+  }
+
+  const logs: ethers.Log[] = [];
+  for (let index = 0; index < ranges.length; index += LOG_SCAN_CONCURRENCY) {
+    const batch = ranges.slice(index, index + LOG_SCAN_CONCURRENCY);
+    const batchLogs = await Promise.all(
+      batch.map((range) =>
+        provider.getLogs({
+          address,
+          fromBlock: range.fromBlock,
+          toBlock: range.toBlock,
+          topics: [event.topicHash],
+        })
+      )
     );
+    logs.push(...batchLogs.flat());
   }
 
   return { iface, logs };
@@ -193,46 +215,50 @@ export async function getDungeonLeaderboard(
   const blockTimestamps = new Map<number, number>();
   const sessions = new Map<string, AnchoredDungeonSession>();
 
-  for (const log of logs) {
-    try {
-      const parsed = iface.parseLog(log);
-      const tokenId = String(parsed?.args.tokenId ?? "");
-      const storageURI = String(parsed?.args.newStorageURI ?? "");
-      if (!tokenId || !storageURI) continue;
+  for (let index = 0; index < logs.length; index += PROGRESS_DOWNLOAD_CONCURRENCY) {
+    await Promise.all(
+      logs.slice(index, index + PROGRESS_DOWNLOAD_CONCURRENCY).map(async (log) => {
+        try {
+          const parsed = iface.parseLog(log);
+          const tokenId = String(parsed?.args.tokenId ?? "");
+          const storageURI = String(parsed?.args.newStorageURI ?? "");
+          if (!tokenId || !storageURI) return;
 
-      const record = await downloadProgressRecord(storageURI, chainId);
-      const progress = record.payload;
-      if (record.kind !== "realm-progress" || !progress?.completed || !progress.bossDefeated) continue;
-      if (String(progress.tokenId ?? tokenId) !== tokenId || !progress.sessionId) continue;
+          const record = await downloadProgressRecord(storageURI, chainId);
+          const progress = record.payload;
+          if (record.kind !== "realm-progress" || !progress?.completed || !progress.bossDefeated) return;
+          if (String(progress.tokenId ?? tokenId) !== tokenId || !progress.sessionId) return;
 
-      let updatedAt = blockTimestamps.get(log.blockNumber);
-      if (!updatedAt) {
-        const block = await provider.getBlock(log.blockNumber);
-        updatedAt = Number(block?.timestamp ?? 0) * 1_000;
-        blockTimestamps.set(log.blockNumber, updatedAt);
-      }
+          let updatedAt = blockTimestamps.get(log.blockNumber);
+          if (!updatedAt) {
+            const block = await provider.getBlock(log.blockNumber);
+            updatedAt = Number(block?.timestamp ?? 0) * 1_000;
+            blockTimestamps.set(log.blockNumber, updatedAt);
+          }
 
-      const session: AnchoredDungeonSession = {
-        tokenId,
-        sessionId: String(progress.sessionId),
-        clanTitle: String(progress.clanTitle || `Clan #${tokenId}`),
-        playerAddress: String(progress.playerAddress || ""),
-        xp: safeScore(progress.xp),
-        level: Math.max(1, safeScore(progress.level)),
-        completed: true,
-        bossDefeated: true,
-        blockNumber: log.blockNumber,
-        logIndex: log.index,
-        updatedAt,
-      };
-      const key = `${tokenId}:${session.sessionId}`;
-      const previous = sessions.get(key);
-      if (!previous || previous.blockNumber < session.blockNumber || previous.logIndex < session.logIndex) {
-        sessions.set(key, session);
-      }
-    } catch {
-      // Ignore unrelated metadata roots and storage records that are not tournament completions.
-    }
+          const session: AnchoredDungeonSession = {
+            tokenId,
+            sessionId: String(progress.sessionId),
+            clanTitle: String(progress.clanTitle || `Clan #${tokenId}`),
+            playerAddress: String(progress.playerAddress || ""),
+            xp: safeScore(progress.xp),
+            level: Math.max(1, safeScore(progress.level)),
+            completed: true,
+            bossDefeated: true,
+            blockNumber: log.blockNumber,
+            logIndex: log.index,
+            updatedAt,
+          };
+          const key = `${tokenId}:${session.sessionId}`;
+          const previous = sessions.get(key);
+          if (!previous || previous.blockNumber < session.blockNumber || previous.logIndex < session.logIndex) {
+            sessions.set(key, session);
+          }
+        } catch {
+          // Ignore unrelated metadata roots and storage records that are not tournament completions.
+        }
+      })
+    );
   }
 
   const value: DungeonLeaderboardResponse = {

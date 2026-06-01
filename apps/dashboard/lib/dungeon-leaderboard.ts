@@ -117,7 +117,15 @@ async function downloadProgressRecord(rootHash: string, chainId: number) {
   );
 
   try {
-    await downloadFromStorage(rootHash, outputPath, storageConfig(chainId));
+    try {
+      await downloadFromStorage(rootHash, outputPath, storageConfig(chainId));
+    } catch (err) {
+      if (chainId === 16602) throw err;
+
+      // Early mainnet clears were anchored on-chain while their payloads were uploaded through Galileo storage.
+      await rm(outputPath, { force: true });
+      await downloadFromStorage(rootHash, outputPath, storageConfig(16602));
+    }
     return JSON.parse(await readFile(outputPath, "utf8")) as RealmProgressRecord;
   } finally {
     await rm(outputPath, { force: true });
@@ -227,7 +235,12 @@ export async function getDungeonLeaderboard(
           const record = await downloadProgressRecord(storageURI, chainId);
           const progress = record.payload;
           if (record.kind !== "realm-progress" || !progress?.completed || !progress.bossDefeated) return;
-          if (String(progress.tokenId ?? tokenId) !== tokenId || !progress.sessionId) return;
+          if (String(progress.tokenId ?? tokenId) !== tokenId) return;
+
+          // Legacy anchored clears predate run session IDs. The event position is immutable and deterministic.
+          const sessionId = progress.sessionId
+            ? String(progress.sessionId)
+            : `legacy:${log.transactionHash}:${log.index}`;
 
           let updatedAt = blockTimestamps.get(log.blockNumber);
           if (!updatedAt) {
@@ -238,7 +251,7 @@ export async function getDungeonLeaderboard(
 
           const session: AnchoredDungeonSession = {
             tokenId,
-            sessionId: String(progress.sessionId),
+            sessionId,
             clanTitle: String(progress.clanTitle || `Clan #${tokenId}`),
             playerAddress: String(progress.playerAddress || ""),
             xp: safeScore(progress.xp),

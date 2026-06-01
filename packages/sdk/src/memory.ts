@@ -1,4 +1,4 @@
-import { uploadJSON, downloadFromStorage } from "./storage";
+import { uploadJSON, downloadJSON } from "./storage";
 import type { StorageConfig, MemoryEntry, MemoryIndex } from "./types";
 
 export class MemoryEngine {
@@ -10,11 +10,7 @@ export class MemoryEngine {
 
   async loadMemory(rootHash: string): Promise<MemoryIndex | null> {
     try {
-      const tmpPath = `/tmp/memory_${Date.now()}.json`;
-      await downloadFromStorage(rootHash, tmpPath, this.storageConfig);
-      const { readFileSync } = await import("fs");
-      const data = readFileSync(tmpPath, "utf-8");
-      return JSON.parse(data) as MemoryIndex;
+      return await downloadJSON<MemoryIndex>(rootHash, this.storageConfig);
     } catch {
       return null;
     }

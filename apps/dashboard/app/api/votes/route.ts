@@ -1,8 +1,5 @@
-import { readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { NextRequest, NextResponse } from "next/server";
-import { downloadFromStorage, type StorageConfig } from "@0gclawforge/sdk";
+import { downloadJSON, type StorageConfig } from "@0gclawforge/sdk";
 import { getOgRpcUrl, getOgStorageIndexer } from "../../../lib/contract-addresses";
 
 function readPrivateKey(): string {
@@ -19,13 +16,7 @@ function getStorageConfig(chainId: number): StorageConfig {
 }
 
 async function downloadRecord(rootHash: string, chainId: number) {
-  const tmpPath = join(tmpdir(), `0gclawforge-vote-${rootHash.slice(0, 12)}-${Date.now()}.json`);
-  try {
-    await downloadFromStorage(rootHash, tmpPath, getStorageConfig(chainId));
-    return JSON.parse(await readFile(tmpPath, "utf8"));
-  } finally {
-    await rm(tmpPath, { force: true });
-  }
+  return downloadJSON<any>(rootHash, getStorageConfig(chainId));
 }
 
 export async function GET(req: NextRequest) {

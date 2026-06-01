@@ -1,0 +1,31 @@
+{
+  "name": "@0gclawforge/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP server exposing 0GClawForge clans (mint, evolve, propose, query memory) plus every neutral 0G primitive (storage, compute, DA, attestation, chain) as tools for Claude / Cursor / Cline / any agent runtime.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "0gclawforge-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@0gclawforge/foundry": "workspace:*",
+    "@0gclawforge/sdk": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "ethers": "^6.11.0",
+    "viem": "^2.21.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}

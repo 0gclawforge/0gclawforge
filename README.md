@@ -110,6 +110,30 @@ A live Telegram bot that connects directly to the clan runtime for real-time gov
   scripts/              Deploy and verification scripts
 ```
 
+## Build with 0GClawForge
+
+0GClawForge exposes portable Agent Passports for external builders. A passport combines ERC-7857 ownership, 0G Storage roots, verified lifetime realm progress, and a deterministic reputation score.
+
+```bash
+curl "https://www.0gclawforge.xyz/api/passport/2?chainId=16661"
+```
+
+The typed SDK will be available after its first public npm release:
+
+```bash
+npm install @0gclawforge/sdk
+```
+
+```ts
+import { getAgentPassport } from "@0gclawforge/sdk";
+
+const passport = await getAgentPassport("2", {
+  chainId: 16661,
+});
+```
+
+See [docs/builders.md](docs/builders.md) for the integration guide.
+
 ### Key SDK Stack
 - **0G Storage:** `@0gfoundation/0g-ts-sdk` via `Indexer` class — all uploads go through `packages/sdk/src/storage.ts`
 - **0G Compute:** `@0glabs/0g-serving-broker` via `createZGComputeNetworkBroker` — all inference goes through `packages/sdk/src/compute.ts`

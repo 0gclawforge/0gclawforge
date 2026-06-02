@@ -115,7 +115,7 @@ export default function GeneralLeaderboardPage() {
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: Math.min(index * 0.04, 0.4) }}
-                className="grid gap-4 py-5 md:grid-cols-[72px_1fr_auto_auto] md:items-center"
+                className="grid gap-4 py-5 md:grid-cols-[72px_1fr_auto_auto_auto] md:items-center"
               >
                 <p className="font-mono text-2xl font-black text-gold">#{index + 1}</p>
                 <div>
@@ -127,6 +127,10 @@ export default function GeneralLeaderboardPage() {
                   <Stat label="Best Run" value={entry.highestRunXp} />
                   <Stat label="Boss Kills" value={entry.bossKills} />
                 </div>
+                <a href={`/passport/${entry.tokenId}`} className="inline-flex items-center justify-center gap-2 rounded-lg border border-gold/40 px-4 py-2 text-sm font-semibold text-gold hover:bg-gold/10">
+                  Passport
+                  <ShieldCheck className="h-4 w-4" />
+                </a>
                 <a href={`/play/${entry.tokenId}`} className="inline-flex items-center justify-center gap-2 rounded-lg bg-gold px-4 py-2 text-sm font-semibold text-obsidian">
                   Enter Realm
                   <ArrowRight className="h-4 w-4" />

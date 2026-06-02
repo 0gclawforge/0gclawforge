@@ -212,6 +212,12 @@ export default function MarketplacePage() {
                 >
                   Preview Realm
                 </a>
+                <a
+                  href={`/passport/${clan.tokenId}`}
+                  className="block w-full rounded-md border border-white/15 py-2.5 text-center font-bold text-parchment transition hover:border-gold/50 hover:text-gold"
+                >
+                  View Passport
+                </a>
               </div>
             </motion.div>
           ))}

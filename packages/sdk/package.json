@@ -1,12 +1,13 @@
 {
   "name": "@0gclawforge/sdk",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "main": "src/index.ts",
   "types": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
     "./inft": "./src/inft.ts",
+    "./passport": "./src/passport.ts",
     "./storage": "./src/storage.ts",
     "./types": "./src/types.ts"
   },

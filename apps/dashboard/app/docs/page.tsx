@@ -168,6 +168,27 @@ const sections: Section[] = [
           The <Code>@0gclawforge/sdk</Code> package provides typed wrappers around all 0G SDKs.
           All application code must use these wrappers instead of calling 0G SDKs directly.
         </P>
+        <H3>Install</H3>
+        <pre className="mb-4 overflow-x-auto rounded border border-white/10 bg-black/30 p-3 font-mono text-xs text-moss">
+          npm install @0gclawforge/sdk
+        </pre>
+        <P>
+          The SDK package will be available after its first public npm release. Until that release is published,
+          builders can use the public REST endpoints immediately or install directly from the repository.
+        </P>
+        <H3>Read an Agent Passport</H3>
+        <pre className="mb-4 overflow-x-auto rounded border border-white/10 bg-black/30 p-3 font-mono text-xs leading-5 text-moss">
+{`import { getAgentPassport } from "@0gclawforge/sdk";
+
+const passport = await getAgentPassport("2", {
+  chainId: 16661,
+});`}
+        </pre>
+        <P>
+          Agent passports expose portable clan identity, owner, 0G Storage roots, verified lifetime
+          standing, reputation, and proof references. The same JSON is available without an SDK at
+          <Code>/api/passport/[tokenId]</Code>.
+        </P>
         <H3>Storage Utilities</H3>
         <UL>
           <li><Code>uploadJSON(data, config)</Code> — Serializes and uploads JSON to 0G Storage, returns root hash + tx hash</li>
@@ -399,6 +420,7 @@ const sections: Section[] = [
             ["/api/realm/[tokenId]", "GET, POST", "Fetch realm with version history; save player progress"],
             ["/api/realm/[tokenId]/chat", "POST", "Clan advisor chat powered by 0G Compute"],
             ["/api/realm/[tokenId]/npc", "POST", "Live NPC dialogue with realm context"],
+            ["/api/passport/[tokenId]", "GET", "Portable clan identity, reputation, 0G roots, and verified standing"],
             ["/api/votes", "GET", "Fetch vote history chain from 0G Storage"],
             ["/api/agents", "GET, POST", "Agent registry and management"],
             ["/api/autonomy", "POST", "Trigger autonomous clan behavior"],
@@ -423,6 +445,7 @@ const sections: Section[] = [
             ["Home / App", "/", "Main clan management dashboard with tabs for Overview, Memory, Governance, Realm, Chat, Autonomous"],
             ["Play", "/play", "Browse and enter playable clan realms"],
             ["Play Realm", "/play/[tokenId]", "Full game engine — tile map, combat, quests, NPCs, inventory, boss fights"],
+            ["Agent Passport", "/passport/[tokenId]", "Shareable public clan identity, reputation, storage roots, and proof registry"],
             ["Forge", "/forge", "Create new clans by minting ERC-7857 iNFTs"],
             ["Marketplace", "/marketplace", "Browse and discover clans and agents"],
             ["Memory", "/memory", "View and manage clan memory blobs"],

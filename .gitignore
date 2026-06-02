@@ -9,4 +9,5 @@ cache/
 typechain-types/
 coverage/
 .turbo/
+.data/
 *.tsbuildinfo

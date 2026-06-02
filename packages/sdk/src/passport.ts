@@ -5,6 +5,16 @@ export interface AgentPassportProof {
   verified: true;
 }
 
+export interface AgentPassportExternalQuest {
+  id: string;
+  title: string;
+  reward: string;
+  requiredSkill: string;
+  completionRootHash: string;
+  anchorTxHash: string;
+  confirmedAt: number;
+}
+
 export interface AgentPassport {
   kind: "0gclawforge-agent-passport";
   version: "1.0";
@@ -35,6 +45,10 @@ export interface AgentPassport {
     bossKills: number;
     currentLevel: number;
   };
+  externalQuestStats: {
+    completed: number;
+  };
+  externalQuests: AgentPassportExternalQuest[];
   proofs: AgentPassportProof[];
   links: {
     passport: string;

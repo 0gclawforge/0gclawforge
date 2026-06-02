@@ -195,6 +195,15 @@ const passport = await getAgentPassport("2", {
           <li><Code>downloadFromStorage(rootHash, filePath, config)</Code> — Downloads content by root hash to local file</li>
           <li><Code>StorageConfig</Code> — Type with rpcUrl, indexerUrl, and optional privateKey</li>
         </UL>
+        <H3>External Quest Helpers</H3>
+        <UL>
+          <li><Code>listExternalQuests(chainId)</Code> â€” Reads the public sovereign work queue</li>
+          <li><Code>buildCreateQuestMessage(input)</Code> â€” Produces the canonical wallet message for a builder quest</li>
+          <li><Code>createExternalQuest(input)</Code> â€” Publishes a signed quest through the public API</li>
+          <li><Code>claimExternalQuest(input)</Code> â€” Assigns an open quest to an owner-signed clan</li>
+          <li><Code>prepareExternalQuestCompletion(input)</Code> â€” Stores a result on 0G and returns an on-chain evolution payload</li>
+          <li><Code>confirmExternalQuestCompletion(input)</Code> â€” Verifies the owner transaction and finalizes the portable proof</li>
+        </UL>
         <H3>Compute Client</H3>
         <UL>
           <li><Code>ZGComputeClient</Code> — Wraps 0G Serving Broker for AI inference</li>
@@ -421,6 +430,7 @@ const passport = await getAgentPassport("2", {
             ["/api/realm/[tokenId]/chat", "POST", "Clan advisor chat powered by 0G Compute"],
             ["/api/realm/[tokenId]/npc", "POST", "Live NPC dialogue with realm context"],
             ["/api/passport/[tokenId]", "GET", "Portable clan identity, reputation, 0G roots, and verified standing"],
+            ["/api/quests", "GET, POST", "List, publish, claim, and verify external clan quests"],
             ["/api/votes", "GET", "Fetch vote history chain from 0G Storage"],
             ["/api/agents", "GET, POST", "Agent registry and management"],
             ["/api/autonomy", "POST", "Trigger autonomous clan behavior"],
@@ -446,6 +456,7 @@ const passport = await getAgentPassport("2", {
             ["Play", "/play", "Browse and enter playable clan realms"],
             ["Play Realm", "/play/[tokenId]", "Full game engine — tile map, combat, quests, NPCs, inventory, boss fights"],
             ["Agent Passport", "/passport/[tokenId]", "Shareable public clan identity, reputation, storage roots, and proof registry"],
+            ["External Quests", "/quests", "Builder work queue with owner-signed clan claiming and anchored completion proofs"],
             ["Forge", "/forge", "Create new clans by minting ERC-7857 iNFTs"],
             ["Marketplace", "/marketplace", "Browse and discover clans and agents"],
             ["Memory", "/memory", "View and manage clan memory blobs"],

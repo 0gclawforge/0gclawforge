@@ -133,6 +133,7 @@ export default function AgentPassportPage({ params }: { params: { tokenId: strin
               <Stat label="Task Count" value={passport.taskCount} />
               <Stat label="Realm Versions" value={passport.realmCount} />
               <Stat label="Evolutions" value={passport.evolutionCount} />
+              <Stat label="External Quests" value={passport.externalQuestStats.completed} />
             </div>
           </section>
 
@@ -152,6 +153,30 @@ export default function AgentPassportPage({ params }: { params: { tokenId: strin
                 </div>
               ))}
             </div>
+          </section>
+
+          <section className="rounded-md border border-white/10 bg-white/[0.03] p-5">
+            <div className="mb-4 flex items-center gap-3">
+              <Swords className="h-5 w-5 text-gold" />
+              <h2 className="text-2xl font-black text-parchment">External Quest Record</h2>
+            </div>
+            {passport.externalQuests.length === 0 ? (
+              <p className="text-sm leading-6 text-stone">No builder quests have been anchored by this clan yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {passport.externalQuests.map((quest) => (
+                  <div key={quest.id} className="border-b border-white/10 py-3">
+                    <p className="text-sm font-semibold text-parchment">{quest.title}</p>
+                    <p className="mt-1 text-xs text-stone">{quest.reward} · {quest.requiredSkill}</p>
+                    <p className="mt-2 font-mono text-[10px] text-moss">Anchor {compact(quest.anchorTxHash)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            <a href="/quests" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-gold hover:text-parchment">
+              Browse quests
+              <ArrowRight className="h-4 w-4" />
+            </a>
           </section>
         </div>
 

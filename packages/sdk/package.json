@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./inft": "./src/inft.ts",
     "./passport": "./src/passport.ts",
+    "./quests": "./src/quests.ts",
     "./storage": "./src/storage.ts",
     "./types": "./src/types.ts"
   },

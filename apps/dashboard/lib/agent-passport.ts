@@ -3,6 +3,7 @@ import { agentInftAbi } from "@0gclawforge/sdk";
 import type { AgentPassport, AgentPassportProof } from "@0gclawforge/sdk";
 import { getAgentInftAddress, getOgRpcUrl } from "./contract-addresses";
 import { getDungeonLeaderboard } from "./dungeon-leaderboard";
+import { listCompletedExternalQuestsForClan } from "./external-quests";
 
 function normalizeClanState(raw: any) {
   return {
@@ -30,6 +31,7 @@ function reputationScore(input: {
   bossKills: number;
   evolutionCount: number;
   realmCount: number;
+  externalQuestCompletions: number;
 }) {
   return Math.min(
     100,
@@ -37,7 +39,8 @@ function reputationScore(input: {
       input.verifiedClears * 12 +
       input.bossKills * 8 +
       Math.min(10, input.evolutionCount * 2) +
-      Math.min(10, input.realmCount * 2)
+      Math.min(10, input.realmCount * 2) +
+      Math.min(10, input.externalQuestCompletions * 5)
   );
 }
 
@@ -51,11 +54,13 @@ export async function getAgentPassport(tokenId: string, chainId: number): Promis
   const provider = new ethers.JsonRpcProvider(getOgRpcUrl(normalizedChainId));
   const contract = new ethers.Contract(contractAddress, agentInftAbi, provider);
   const leaderboardPromise = getDungeonLeaderboard(normalizedChainId, { mode: "general" });
-  const [rawAgent, rawClanState, owner, leaderboard] = await Promise.all([
+  const externalQuestsPromise = listCompletedExternalQuestsForClan(normalizedChainId, tokenId);
+  const [rawAgent, rawClanState, owner, leaderboard, externalQuests] = await Promise.all([
     contract.getAgentData(BigInt(tokenId)),
     contract.getClanState(BigInt(tokenId)),
     contract.ownerOf(BigInt(tokenId)),
     leaderboardPromise,
+    externalQuestsPromise,
   ]);
 
   const clanState = normalizeClanState(rawClanState);
@@ -100,8 +105,12 @@ export async function getAgentPassport(tokenId: string, chainId: number): Promis
     skillCount: Number(rawAgent.skillCount ?? rawAgent[5] ?? 0),
     taskCount: Number(rawAgent.taskCount ?? rawAgent[6] ?? 0),
     memorySize: Number(rawAgent.memorySize ?? rawAgent[7] ?? 0),
-    reputation: reputationScore({ ...standing, ...clanState }),
+    reputation: reputationScore({ ...standing, ...clanState, externalQuestCompletions: externalQuests.length }),
     standing,
+    externalQuestStats: {
+      completed: externalQuests.length,
+    },
+    externalQuests,
     proofs,
     links: {
       passport: `${publicBase}/passport/${tokenId}`,

@@ -42,7 +42,7 @@ export default function GeneralLeaderboardPage() {
             <p className="text-xs uppercase tracking-[0.24em] text-gold">On-chain Clan Standings</p>
             <h1 className="mt-3 text-4xl font-black text-parchment md:text-5xl">General Leaderboard</h1>
             <p className="mt-4 max-w-3xl text-sm leading-6 text-stone">
-              Permanent rankings for verified realm clears. Every score is reconstructed from clan evolution records anchored on the active 0G network.
+              Permanent standings for every minted clan. Lifetime XP, clears, and boss kills are reconstructed from clan evolution records anchored on the active 0G network.
             </p>
           </motion.div>
 
@@ -70,7 +70,7 @@ export default function GeneralLeaderboardPage() {
             <Trophy className="h-6 w-6 text-gold" />
             <div>
               <h2 className="text-2xl font-black text-parchment">Lifetime Clan Rankings</h2>
-              <p className="mt-1 text-xs uppercase tracking-[0.18em] text-moss">Verified completed runs only</p>
+              <p className="mt-1 text-xs uppercase tracking-[0.18em] text-moss">All minted clans ranked by verified lifetime progress</p>
             </div>
           </div>
           <button
@@ -85,7 +85,7 @@ export default function GeneralLeaderboardPage() {
 
         {leaderboard?.baseline === "rolling-window" && (
           <div className="mb-6 rounded-md border border-ember/40 bg-ember/[0.08] p-4 text-sm leading-6 text-parchment">
-            The general baseline has not been pinned yet. Set <span className="font-mono text-gold">OG_GENERAL_LEADERBOARD_FROM_BLOCK_MAINNET</span> for mainnet tournament operations so lifetime rankings always scan from the same historical block.
+            The general baseline has not been pinned yet. Set <span className="font-mono text-gold">OG_GENERAL_LEADERBOARD_FROM_BLOCK_MAINNET</span> so lifetime rankings always scan from the same historical block.
           </div>
         )}
 
@@ -104,8 +104,8 @@ export default function GeneralLeaderboardPage() {
         ) : entries.length === 0 ? (
           <div className="rounded-md border border-white/10 bg-white/[0.03] p-10 text-center">
             <Crown className="mx-auto h-8 w-8 text-gold" />
-            <h3 className="mt-4 text-xl font-black text-parchment">No verified clears yet</h3>
-            <p className="mt-2 text-sm text-stone">Complete a realm and anchor the clan evolution to claim the first position.</p>
+            <h3 className="mt-4 text-xl font-black text-parchment">No clans minted yet</h3>
+            <p className="mt-2 text-sm text-stone">Mint the first clan on this network to establish the lifetime standings.</p>
           </div>
         ) : (
           <div className="divide-y divide-white/10 border-y border-white/10">

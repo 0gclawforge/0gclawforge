@@ -55,9 +55,14 @@ export interface DungeonLeaderboardResponse {
 export type DungeonLeaderboardMode = "general" | "tournament";
 
 const METADATA_EVENT = "event AgentMetadataUpdated(uint256 indexed tokenId, bytes32 newHash, string newStorageURI)";
+const AGENT_DATA_ABI = [
+  "function totalSupply() view returns (uint256)",
+  "function getAgentData(uint256 tokenId) view returns (tuple(bytes32 metadataHash, string encryptedStorageURI, string agentName, string agentPersonality, string modelType, uint256 skillCount, uint256 taskCount, uint256 memorySize, uint256 createdAt, uint256 lastActiveAt, bool isListedForSale, uint256 salePrice))",
+];
 const LOG_CHUNK_SIZE = 25_000;
 const LOG_SCAN_CONCURRENCY = 12;
 const PROGRESS_DOWNLOAD_CONCURRENCY = 4;
+const CLAN_SCAN_CONCURRENCY = 12;
 const DEFAULT_LOOKBACK_BLOCKS = 250_000;
 const DEFAULT_GENERAL_LEADERBOARD_FROM_BLOCK_MAINNET = 33_310_093;
 const CACHE_TTL_MS = 30_000;
@@ -171,25 +176,56 @@ function sortEntries(entries: DungeonLeaderboardEntry[]) {
   });
 }
 
-function aggregateSessions(sessions: AnchoredDungeonSession[]) {
-  const byToken = new Map<string, DungeonLeaderboardEntry>();
+function emptyLeaderboardEntry(tokenId: string, clanTitle = `Clan #${tokenId}`): DungeonLeaderboardEntry {
+  return {
+    tokenId,
+    clanTitle,
+    totalXpEarned: 0,
+    highestRunXp: 0,
+    lastRunXp: 0,
+    currentLevel: 1,
+    totalRuns: 0,
+    completedRuns: 0,
+    bossKills: 0,
+    lastPlayerAddress: "",
+    updatedAt: 0,
+  };
+}
+
+async function loadMintedClanEntries(provider: ethers.JsonRpcProvider, address: string) {
+  const contract = new ethers.Contract(address, AGENT_DATA_ABI, provider);
+  const totalSupply = Number(await contract.totalSupply());
+  const entries = new Map<string, DungeonLeaderboardEntry>();
+
+  for (let start = 1; start <= totalSupply; start += CLAN_SCAN_CONCURRENCY) {
+    const end = Math.min(totalSupply, start + CLAN_SCAN_CONCURRENCY - 1);
+    await Promise.all(
+      Array.from({ length: end - start + 1 }, (_, offset) => start + offset).map(async (tokenId) => {
+        try {
+          const data = await contract.getAgentData(tokenId);
+          const id = String(tokenId);
+          entries.set(id, emptyLeaderboardEntry(id, String(data.agentName || data[2] || `Clan #${id}`)));
+        } catch {
+          // Ignore token gaps if a future contract version supports burns.
+        }
+      })
+    );
+  }
+
+  return entries;
+}
+
+function aggregateSessions(
+  sessions: AnchoredDungeonSession[],
+  seededEntries = new Map<string, DungeonLeaderboardEntry>()
+) {
+  const byToken = new Map(seededEntries);
 
   for (const session of sessions) {
-    const entry = byToken.get(session.tokenId) ?? {
-      tokenId: session.tokenId,
-      clanTitle: session.clanTitle || `Clan #${session.tokenId}`,
-      totalXpEarned: 0,
-      highestRunXp: 0,
-      lastRunXp: 0,
-      currentLevel: 1,
-      totalRuns: 0,
-      completedRuns: 0,
-      bossKills: 0,
-      lastPlayerAddress: "",
-      updatedAt: 0,
-    };
+    const fallbackClanTitle = `Clan #${session.tokenId}`;
+    const entry = byToken.get(session.tokenId) ?? emptyLeaderboardEntry(session.tokenId, session.clanTitle);
 
-    entry.clanTitle = session.clanTitle || entry.clanTitle;
+    entry.clanTitle = session.clanTitle && session.clanTitle !== fallbackClanTitle ? session.clanTitle : entry.clanTitle;
     entry.totalXpEarned += session.xp;
     entry.highestRunXp = Math.max(entry.highestRunXp, session.xp);
     entry.lastRunXp = session.xp;
@@ -274,8 +310,9 @@ export async function getDungeonLeaderboard(
     );
   }
 
+  const seededEntries = mode === "general" ? await loadMintedClanEntries(provider, address) : undefined;
   const value: DungeonLeaderboardResponse = {
-    entries: aggregateSessions([...sessions.values()]),
+    entries: aggregateSessions([...sessions.values()], seededEntries),
     updatedAt: Date.now(),
     chainId,
     source: "on-chain",

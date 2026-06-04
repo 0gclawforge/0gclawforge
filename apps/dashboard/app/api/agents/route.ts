@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   if (!owner) return NextResponse.json({ error: "owner required" }, { status: 400 });
 
   try {
-    const chainId = Number(req.nextUrl.searchParams.get("chainId") || process.env.NEXT_PUBLIC_OG_CHAIN_ID || 16602);
+    const chainId = Number(req.nextUrl.searchParams.get("chainId") || 16661);
     const contractAddress = getAgentInftAddress(chainId);
     if (!contractAddress) {
       return NextResponse.json({ agents: [] });

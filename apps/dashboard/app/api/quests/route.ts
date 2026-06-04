@@ -8,7 +8,7 @@ import {
 } from "../../../lib/external-quests";
 
 function readChainId(value: unknown) {
-  const chainId = Number(value || process.env.NEXT_PUBLIC_OG_CHAIN_ID || 16602);
+  const chainId = Number(value || 16661);
   if (chainId !== 16602 && chainId !== 16661) throw new Error("chainId must be 16602 or 16661");
   return chainId;
 }

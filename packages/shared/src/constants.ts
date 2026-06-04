@@ -6,7 +6,7 @@ const readEnv = (key: string): string | undefined => {
 };
 
 export const OG_TESTNET = {
-  chainId: Number(readEnv("VITE_CHAIN_ID") ?? readEnv("NEXT_PUBLIC_OG_CHAIN_ID") ?? 16602),
+  chainId: 16602,
   rpcUrl: readEnv("VITE_RPC_URL") ?? readEnv("NEXT_PUBLIC_OG_RPC_URL") ?? "https://evmrpc-testnet.0g.ai",
   explorer: readEnv("VITE_EXPLORER_URL") ?? readEnv("NEXT_PUBLIC_OG_EXPLORER") ?? "https://chainscan-galileo.0g.ai",
   storageIndexer: readEnv("VITE_STORAGE_INDEXER") ?? readEnv("NEXT_PUBLIC_STORAGE_INDEXER") ?? "https://indexer-storage-testnet-turbo.0g.ai",
@@ -16,11 +16,13 @@ export const OG_TESTNET = {
 
 export const OG_MAINNET = {
   chainId: 16661,
-  rpcUrl: "https://evmrpc.0g.ai",
-  explorer: "https://chainscan.0g.ai",
-  storageIndexer: "https://indexer-storage-turbo.0g.ai",
+  rpcUrl: readEnv("NEXT_PUBLIC_OG_MAINNET_RPC_URL") ?? "https://evmrpc.0g.ai",
+  explorer: readEnv("NEXT_PUBLIC_OG_MAINNET_EXPLORER") ?? "https://chainscan.0g.ai",
+  storageIndexer: readEnv("OG_MAINNET_STORAGE_INDEXER") ?? "https://indexer-storage-turbo.0g.ai",
   name: "0G Mainnet",
 } as const;
+
+export const OG_DEFAULT = OG_MAINNET;
 
 export const PRODUCT_DESCRIPTION =
   "0GClawForge is the first complete OpenClaw-powered sovereign agent OS — a forge where teams mint, orchestrate, own (as ERC-7857 iNFTs), persist, and evolve multi-agent systems that run verifiable TEE inference, store long-term memory forever on 0G, and execute autonomous on-chain actions with zero context loss. Built on top, Eternal Clans is the flagship consumer application: tradable AI civilizations where players co-create UGC Gaming realms + SocialFi DAOs + DePIN coordination into one living, self-evolving digital nation.";

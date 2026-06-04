@@ -16,7 +16,7 @@ const MARKETPLACE_ABI = [
 
 export async function GET(req: NextRequest) {
   try {
-    const chainId = Number(req.nextUrl.searchParams.get("chainId") || process.env.NEXT_PUBLIC_OG_CHAIN_ID || 16602);
+    const chainId = Number(req.nextUrl.searchParams.get("chainId") || 16661);
     const contractAddr = getAgentInftAddress(chainId);
     const marketplaceAddress = getAgentMarketplaceAddress(chainId);
     if (!contractAddr || !marketplaceAddress) {

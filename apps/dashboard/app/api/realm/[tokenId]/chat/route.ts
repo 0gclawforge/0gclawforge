@@ -131,7 +131,7 @@ export async function POST(req: NextRequest, { params }: { params: { tokenId: st
       return NextResponse.json({ error: "Message is required." }, { status: 400 });
     }
 
-    const chainId = Number(req.nextUrl.searchParams.get("chainId") || 16602);
+    const chainId = Number(req.nextUrl.searchParams.get("chainId") || 16661);
     const computeConfig = getComputeConfig(chainId);
 
     const rpcUrl = getOgRpcUrl(chainId);

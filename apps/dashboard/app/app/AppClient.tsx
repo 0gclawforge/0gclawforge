@@ -706,7 +706,7 @@ export default function HomePage() {
           <div>
             <h1 className="text-4xl font-black leading-tight text-parchment">0GClawForge</h1>
             <p className="mt-3 text-sm leading-6 text-stone">
-              Mint, store, evolve, deploy to chat, and trade real clan iNFTs on 0G Galileo. Switch to mainnet from the wallet control when addresses are deployed there.
+              Mint, store, evolve, deploy to chat, and trade real clan iNFTs on 0G Mainnet. Switch to Galileo from the wallet control when you want the testnet.
             </p>
           </div>
 

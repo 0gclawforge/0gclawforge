@@ -238,7 +238,7 @@ See [.env.example](.env.example). Key variables:
 |---|---|
 | `PRIVATE_KEY` | Funded wallet for 0G Storage uploads and Compute |
 | `NEXT_PUBLIC_OG_RPC_URL` | 0G chain RPC endpoint |
-| `NEXT_PUBLIC_OG_CHAIN_ID` | Chain ID (16602 testnet, 16661 mainnet) |
+| `NEXT_PUBLIC_OG_CHAIN_ID` | Legacy chain ID hint. The dashboard defaults to 0G Mainnet; users can still switch to Galileo. |
 | `NEXT_PUBLIC_STORAGE_INDEXER` | 0G Storage indexer URL |
 | `OG_COMPUTE_PROVIDER_ADDR` | 0G Compute provider address |
 | `NEXT_PUBLIC_AGENT_INFT_ADDRESS` | Deployed iNFT contract address |
@@ -252,13 +252,16 @@ See [.env.example](.env.example). Key variables:
 | `DISCORD_DEFAULT_CHANNEL_ID` | Target Discord channel ID |
 | `WEATHERXM_API_BASE` | WeatherXM API base URL |
 
-## Mainnet Swap
+## Network Defaults
 
-1. Change `NEXT_PUBLIC_OG_CHAIN_ID` to `16661`
-2. Change `NEXT_PUBLIC_OG_RPC_URL` to `https://evmrpc.0g.ai`
-3. Change `NEXT_PUBLIC_OG_EXPLORER` to `https://chainscan.0g.ai`
-4. Deploy contracts to mainnet and update addresses in `.env`
-5. Rebuild and restart
+0G Mainnet is the default dashboard network. Keep the mainnet contract variables populated:
+
+1. `NEXT_PUBLIC_AGENT_INFT_MAINNET_ADDRESS`
+2. `NEXT_PUBLIC_AGENT_MARKETPLACE_MAINNET_ADDRESS`
+3. `NEXT_PUBLIC_OG_MAINNET_RPC_URL`
+4. `NEXT_PUBLIC_OG_MAINNET_EXPLORER`
+
+Galileo testnet remains available through the wallet/network switcher and explicit `chainId=16602` API requests.
 
 ## Scripts
 

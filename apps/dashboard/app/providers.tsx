@@ -9,7 +9,7 @@ import { defineChain } from "viem";
 import { useState } from "react";
 
 const ogTestnet = defineChain({
-  id: Number(process.env.NEXT_PUBLIC_OG_CHAIN_ID || 16602),
+  id: 16602,
   name: "0G Galileo Testnet",
   nativeCurrency: { name: "0G", symbol: "OG", decimals: 18 },
   rpcUrls: {
@@ -41,7 +41,7 @@ const ogMainnet = defineChain({
 const config = getDefaultConfig({
   appName: "0GClawForge",
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "0gclawforge-dev",
-  chains: [ogTestnet, ogMainnet],
+  chains: [ogMainnet, ogTestnet],
 });
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -51,6 +51,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider
+          initialChain={ogMainnet}
           theme={darkTheme({
             accentColor: "#D4A843",
             accentColorForeground: "#1A1A1A",

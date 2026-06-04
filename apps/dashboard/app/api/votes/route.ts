@@ -31,7 +31,7 @@ async function downloadRecord(rootHash: string, chainId: number) {
 export async function GET(req: NextRequest) {
   try {
     const voteRoot = req.nextUrl.searchParams.get("voteRoot");
-    const chainId = Number(req.nextUrl.searchParams.get("chainId") || process.env.NEXT_PUBLIC_OG_CHAIN_ID || 16602);
+    const chainId = Number(req.nextUrl.searchParams.get("chainId") || 16661);
     if (!voteRoot?.trim()) {
       return NextResponse.json({ error: "voteRoot query parameter is required." }, { status: 400 });
     }

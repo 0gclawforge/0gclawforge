@@ -395,7 +395,7 @@ async function storeRecord(kind: string, payload: Record<string, unknown>, chain
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as ClanApiBody;
-    const chainId = Number(body.chainId || process.env.NEXT_PUBLIC_OG_CHAIN_ID || 16602);
+    const chainId = Number(body.chainId || 16661);
 
     if (body.action === "prepareMint") {
       if (!body.clanName || !body.archetype || !body.owner) {

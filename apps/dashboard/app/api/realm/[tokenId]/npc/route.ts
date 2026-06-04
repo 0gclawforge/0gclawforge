@@ -102,7 +102,7 @@ function fallbackNpcReply(npc: { name: string; description: string }, realm: any
 export async function POST(req: NextRequest, { params }: { params: { tokenId: string } }) {
   try {
     const body = await req.json();
-    const chainId = Number(req.nextUrl.searchParams.get("chainId") || 16602);
+    const chainId = Number(req.nextUrl.searchParams.get("chainId") || 16661);
     const computeConfig = getComputeConfig(chainId);
 
     const rpcUrl = getOgRpcUrl(chainId);

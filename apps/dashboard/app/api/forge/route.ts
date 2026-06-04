@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { name, personality, model, capabilities, skills, memorySeed } = body;
-    const chainId = Number(body.chainId || process.env.NEXT_PUBLIC_OG_CHAIN_ID || 16602);
+    const chainId = Number(body.chainId || 16661);
 
     if (!name) {
       return NextResponse.json({ error: "name required" }, { status: 400 });

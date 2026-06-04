@@ -487,7 +487,7 @@ const passport = await getAgentPassport("2", {
           rows={[
             ["PRIVATE_KEY", "Server-side signing key for 0G Storage/Compute", "Yes"],
             ["OG_COMPUTE_PROVIDER_ADDR", "0G Compute provider address", "For AI features"],
-            ["NEXT_PUBLIC_OG_CHAIN_ID", "Default chain ID (16602 or 16661)", "No (defaults to 16602)"],
+            ["NEXT_PUBLIC_OG_CHAIN_ID", "Legacy chain ID hint. The dashboard now defaults to 0G Mainnet unless a wallet or request selects Galileo.", "No"],
             ["NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID", "WalletConnect project ID", "For wallet connections"],
           ]}
         />

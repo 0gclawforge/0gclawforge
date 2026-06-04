@@ -50,7 +50,7 @@ function getStorageConfig(chainId: number, requirePrivateKey = false): StorageCo
 }
 
 function getContractConfig(chainId?: string | null) {
-  const useMainnet = chainId === "16661";
+  const useMainnet = chainId !== "16602";
   const rpcUrl = getOgRpcUrl(useMainnet ? 16661 : 16602);
   const address = getAgentInftAddress(useMainnet ? 16661 : 16602);
 
@@ -208,7 +208,7 @@ export async function GET(req: NextRequest, { params }: { params: { tokenId: str
   try {
     assertTokenId(tokenId);
     const requestedChainId = req.nextUrl.searchParams.get("chainId");
-    const chainId = requestedChainId === "16661" ? 16661 : 16602;
+    const chainId = requestedChainId === "16602" ? 16602 : 16661;
     const { rpcUrl, address } = getContractConfig(requestedChainId);
     const provider = new ethers.JsonRpcProvider(rpcUrl);
     const contract = new ethers.Contract(address, agentInftAbi, provider);
@@ -256,7 +256,7 @@ export async function POST(req: NextRequest, { params }: { params: { tokenId: st
   try {
     assertTokenId(tokenId);
     const body = (await req.json()) as SaveProgressBody;
-    const chainId = Number(body.chainId || req.nextUrl.searchParams.get("chainId") || process.env.NEXT_PUBLIC_OG_CHAIN_ID || 16602);
+    const chainId = Number(body.chainId || req.nextUrl.searchParams.get("chainId") || 16661);
 
     if (body.action !== "saveProgress") {
       return NextResponse.json({ error: "Unsupported realm action" }, { status: 400 });

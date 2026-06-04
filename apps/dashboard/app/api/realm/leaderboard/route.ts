@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const chainId = req.nextUrl.searchParams.get("chainId") === "16661" ? 16661 : 16602;
+    const chainId = req.nextUrl.searchParams.get("chainId") === "16602" ? 16602 : 16661;
     const mode = req.nextUrl.searchParams.get("mode") === "tournament" ? "tournament" : "general";
     const leaderboard = await getDungeonLeaderboard(chainId, { mode });
     return NextResponse.json(leaderboard);

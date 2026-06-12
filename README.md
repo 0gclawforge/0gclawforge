@@ -281,7 +281,7 @@ Galileo testnet remains available through the wallet/network switcher and explic
 
 ## Guarded Mainnet Gas Station
 
-The `/gas` page can issue small Mainnet OG grants to wallets that own a 0GClawForge clan. Claims require a fresh wallet signature and are protected by wallet cooldowns, hashed network cooldowns, a daily cap, recipient balance checks, and a minimum treasury reserve.
+The `/gas` page can issue small Mainnet OG grants to new and existing players so they can mint a clan or test gameplay. No existing clan is required. Claims require a fresh wallet signature and are protected by wallet cooldowns, hashed network cooldowns, a daily cap, recipient balance checks, and a minimum treasury reserve.
 
 Use a dedicated treasury key in `MAINNET_FAUCET_PRIVATE_KEY`. Never reuse `PRIVATE_KEY`, a deployment key, a contract owner key, or a wallet holding significant funds. Configure the limits in `.env`, fund the dedicated wallet with only the amount you are willing to distribute, then set `MAINNET_GAS_STATION_ENABLED=true`.
 

@@ -1,10 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { agentInftAbi } from "@0gclawforge/sdk/inft";
 import { buildMainnetGasClaimMessage, OG_MAINNET_CHAIN_ID } from "@0gclawforge/sdk/gas";
 import { ethers } from "ethers";
-import { getAgentInftAddress, getOgRpcUrl } from "./contract-addresses";
+import { getOgRpcUrl } from "./contract-addresses";
 
 interface GasGrant {
   address: string;
@@ -52,7 +51,10 @@ function config() {
     grantWei: amountEnv("MAINNET_FAUCET_GRANT_OG", "0.002"),
     dailyCapWei: amountEnv("MAINNET_FAUCET_DAILY_CAP_OG", "0.05"),
     minTreasuryWei: amountEnv("MAINNET_FAUCET_MIN_BALANCE_OG", "0.02"),
-    maxRecipientWei: amountEnv("MAINNET_FAUCET_MAX_CLAN_BALANCE_OG", "0.01"),
+    maxRecipientWei: amountEnv(
+      "MAINNET_FAUCET_MAX_RECIPIENT_BALANCE_OG",
+      process.env.MAINNET_FAUCET_MAX_CLAN_BALANCE_OG || "0.01",
+    ),
     addressCooldownMs: numberEnv("MAINNET_FAUCET_COOLDOWN_HOURS", 168) * 60 * 60 * 1000,
     ipCooldownMs: numberEnv("MAINNET_FAUCET_IP_COOLDOWN_HOURS", 24) * 60 * 60 * 1000,
   };
@@ -132,8 +134,7 @@ function publicConfig() {
 
 async function getChainContext() {
   const provider = new ethers.JsonRpcProvider(getOgRpcUrl(OG_MAINNET_CHAIN_ID));
-  const contract = new ethers.Contract(getAgentInftAddress(OG_MAINNET_CHAIN_ID), agentInftAbi, provider);
-  return { provider, contract };
+  return { provider };
 }
 
 export async function getMainnetGasStatus(address?: string) {
@@ -152,23 +153,18 @@ export async function getMainnetGasStatus(address?: string) {
   if (!address || !ethers.isAddress(address)) return publicStatus;
 
   const recipient = ethers.getAddress(address);
-  const { provider, contract } = await getChainContext();
-  const [balance, clanBalance] = await Promise.all([
-    provider.getBalance(recipient),
-    contract.balanceOf(recipient) as Promise<bigint>,
-  ]);
+  const { provider } = await getChainContext();
+  const balance = await provider.getBalance(recipient);
   const priorGrant = lastGrant(ledger.grants, (grant) => grant.address.toLowerCase() === recipient.toLowerCase());
 
   return {
     ...publicStatus,
     address: recipient,
-    ownsClan: clanBalance > BigInt(0),
     recipientBalanceOg: ethers.formatEther(balance),
     retryAt: retryAt(priorGrant, station.addressCooldownMs),
     eligible:
       station.enabled &&
       Boolean(privateKey) &&
-      clanBalance > BigInt(0) &&
       balance <= station.maxRecipientWei &&
       retryAt(priorGrant, station.addressCooldownMs) <= Date.now(),
   };
@@ -204,12 +200,8 @@ async function claimInsideQueue(input: MainnetGasClaimInput) {
     throw new Error("The Mainnet Gas Station daily cap has been reached");
   }
 
-  const { provider, contract } = await getChainContext();
-  const [recipientBalance, clanBalance] = await Promise.all([
-    provider.getBalance(address),
-    contract.balanceOf(address) as Promise<bigint>,
-  ]);
-  if (clanBalance <= BigInt(0)) throw new Error("Only wallets that own a 0GClawForge clan can claim Mainnet gas");
+  const { provider } = await getChainContext();
+  const recipientBalance = await provider.getBalance(address);
   if (recipientBalance > station.maxRecipientWei) throw new Error("This wallet already has enough Mainnet OG");
 
   const treasury = new ethers.Wallet(privateKey, provider);

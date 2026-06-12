@@ -13,7 +13,6 @@ interface GasStationStatus {
   cooldownHours: number;
   treasuryReady: boolean;
   address?: string;
-  ownsClan?: boolean;
   recipientBalanceOg?: string;
   retryAt?: number;
   eligible?: boolean;
@@ -95,7 +94,7 @@ export default function MainnetGasStationPage() {
             <p className="text-xs uppercase tracking-[0.24em] text-gold">Clan Operator Utility</p>
             <h1 className="mt-3 text-4xl font-black text-parchment md:text-5xl">Mainnet Gas Station</h1>
             <p className="mt-4 max-w-3xl text-sm leading-6 text-stone">
-              A guarded gas grant for clan owners testing real 0G Mainnet gameplay. Claims are wallet-signed, rate-limited, and available only when the connected wallet needs gas.
+              A guarded gas grant for players minting their first clan or testing real 0G Mainnet gameplay. Claims are wallet-signed, rate-limited, and available when the connected wallet needs gas.
             </p>
           </motion.div>
           <div className="rounded-md border border-gold/30 bg-black/25 p-5">
@@ -119,13 +118,13 @@ export default function MainnetGasStationPage() {
             <h2 className="text-2xl font-black text-parchment">Fuel Your Clan</h2>
           </div>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-stone">
-            Connect the wallet that owns a 0GClawForge clan. Your signature authorizes a fixed grant to that same wallet; it never authorizes contract actions or exposes your keys.
+            Connect the wallet you want to use for minting. Your signature authorizes a fixed grant to that same wallet; it never authorizes contract actions or exposes your keys.
           </p>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <StatusRow label="Station" value={station?.enabled ? "Enabled" : "Disabled"} good={station?.enabled} />
             <StatusRow label="Treasury" value={station?.treasuryReady ? "Ready" : "Unavailable"} good={station?.treasuryReady} />
-            <StatusRow label="Clan ownership" value={station?.ownsClan ? "Verified" : "Clan required"} good={station?.ownsClan} />
+            <StatusRow label="Mint readiness" value={station?.eligible ? "Eligible" : "Check balance"} good={station?.eligible} />
             <StatusRow label="Next claim" value={formatRetryAt(station?.retryAt)} good={!station?.retryAt || station.retryAt <= Date.now()} />
           </div>
 
@@ -169,8 +168,8 @@ export default function MainnetGasStationPage() {
           <WalletCards className="h-6 w-6 text-gold" />
           <h2 className="mt-4 text-2xl font-black text-parchment">Claim Rules</h2>
           <div className="mt-5 space-y-4 text-sm leading-6 text-stone">
-            <p>One fixed grant per eligible clan wallet during the configured cooldown.</p>
-            <p>The connected wallet must own at least one Mainnet clan and must have a low OG balance.</p>
+            <p>One fixed grant per eligible wallet during the configured cooldown.</p>
+            <p>No existing clan is required. New players can claim gas before minting their first clan.</p>
             <p>Daily treasury caps and network-level cooldowns protect the community pool.</p>
             <p>For unrestricted experimentation, switch your wallet to Galileo Testnet.</p>
           </div>

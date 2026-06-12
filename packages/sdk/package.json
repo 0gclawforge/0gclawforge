@@ -7,6 +7,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./inft": "./src/inft.ts",
+    "./gas": "./src/gas.ts",
     "./passport": "./src/passport.ts",
     "./quests": "./src/quests.ts",
     "./storage": "./src/storage.ts",

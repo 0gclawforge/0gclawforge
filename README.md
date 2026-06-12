@@ -251,6 +251,8 @@ See [.env.example](.env.example). Key variables:
 | Variable | Purpose |
 |---|---|
 | `PRIVATE_KEY` | Funded wallet for 0G Storage uploads and Compute |
+| `MAINNET_FAUCET_PRIVATE_KEY` | Dedicated low-balance treasury wallet used only by the guarded Mainnet Gas Station |
+| `MAINNET_GAS_STATION_ENABLED` | Server-side kill switch for Mainnet gas grants |
 | `NEXT_PUBLIC_OG_RPC_URL` | 0G chain RPC endpoint |
 | `NEXT_PUBLIC_OG_CHAIN_ID` | Legacy chain ID hint. The dashboard defaults to 0G Mainnet; users can still switch to Galileo. |
 | `NEXT_PUBLIC_STORAGE_INDEXER` | 0G Storage indexer URL |
@@ -276,6 +278,12 @@ See [.env.example](.env.example). Key variables:
 4. `NEXT_PUBLIC_OG_MAINNET_EXPLORER`
 
 Galileo testnet remains available through the wallet/network switcher and explicit `chainId=16602` API requests.
+
+## Guarded Mainnet Gas Station
+
+The `/gas` page can issue small Mainnet OG grants to wallets that own a 0GClawForge clan. Claims require a fresh wallet signature and are protected by wallet cooldowns, hashed network cooldowns, a daily cap, recipient balance checks, and a minimum treasury reserve.
+
+Use a dedicated treasury key in `MAINNET_FAUCET_PRIVATE_KEY`. Never reuse `PRIVATE_KEY`, a deployment key, a contract owner key, or a wallet holding significant funds. Configure the limits in `.env`, fund the dedicated wallet with only the amount you are willing to distribute, then set `MAINNET_GAS_STATION_ENABLED=true`.
 
 ## Scripts
 

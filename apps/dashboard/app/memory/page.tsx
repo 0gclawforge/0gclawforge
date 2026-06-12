@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { useChainId } from "wagmi";
 
 interface MemoryEntry {
   id: string;
@@ -17,23 +18,30 @@ export default function MemoryPage() {
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [tokenId, setTokenId] = useState("1");
+  const [status, setStatus] = useState("");
+  const chainId = useChainId();
 
   const searchMemories = async () => {
     if (!query) return;
     setLoading(true);
+    setStatus("");
     try {
-      const res = await fetch(`/api/memory?tokenId=${tokenId}&query=${encodeURIComponent(query)}`);
+      const res = await fetch(`/api/memory?tokenId=${tokenId}&chainId=${chainId}&query=${encodeURIComponent(query)}`);
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to read clan memory");
       setMemories(data.entries || []);
-    } catch {
+      setStatus(data.storageRootHash ? `Read ${data.entries?.length || 0} matching memories from ${chainId === 16661 ? "0G Mainnet" : "Galileo"}.` : "This clan has no memory root yet.");
+    } catch (error) {
       setMemories([]);
+      setStatus(error instanceof Error ? error.message : "Failed to read clan memory");
     }
     setLoading(false);
   };
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-16">
-      <h1 className="mb-8 text-3xl font-bold">Memory Visualizer</h1>
+      <h1 className="mb-2 text-3xl font-bold">Talk to Clan Memory</h1>
+      <p className="mb-8 text-sm text-stone">Search the clan&apos;s current on-chain memory root on {chainId === 16661 ? "0G Mainnet" : "Galileo Testnet"}.</p>
 
       {/* Search Bar */}
       <div className="mb-8 flex gap-4">
@@ -48,16 +56,17 @@ export default function MemoryPage() {
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && searchMemories()}
           className="flex-1 rounded-lg border border-border bg-card px-4 py-3 text-text-primary outline-none focus:border-accent-primary"
-          placeholder="Search agent memories..."
+          placeholder="Ask about the clan's memories..."
         />
         <button
           onClick={searchMemories}
           disabled={loading}
           className="rounded-lg bg-accent-primary px-6 py-3 font-semibold text-white disabled:opacity-50"
         >
-          {loading ? "Searching..." : "Search"}
+          {loading ? "Listening..." : "Talk to Memory"}
         </button>
       </div>
+      {status && <p className="mb-6 rounded-md border border-white/10 bg-white/[0.03] p-3 text-sm text-parchment">{status}</p>}
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         {/* Memory Timeline */}

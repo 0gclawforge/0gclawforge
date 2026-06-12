@@ -1122,7 +1122,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
       if (tile.type === "boss") {
         setModal({
           type: "boss",
-          result: `The boss is bound behind ${MEMORY_SEAL_COUNT} Memory Seals. Gather ${PRISM_MEMORIES_REQUIRED} Prism Memories, answer its memory trials, then attack for real.`,
+          result: `Attack now, or gather Prism Memories from NPC trials to break the boss's ${MEMORY_SEAL_COUNT} armor seals and deal full damage.`,
         });
       }
       if (tile.type === "exit") setCompleted(true);
@@ -1433,41 +1433,15 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
 
   const attackBoss = () => {
     if (!gameState || !realmPayload) return;
-    if (gameState.prismMemories.length < PRISM_MEMORIES_REQUIRED && gameState.memorySealsBroken === 0) {
-      const remaining = PRISM_MEMORIES_REQUIRED - gameState.prismMemories.length;
-      addLog(`${theme.bossName} remains immune. You still need ${remaining} Prism ${remaining === 1 ? "Memory" : "Memories"}.`);
-      setModal({
-        type: "boss",
-        result: `${theme.bossName} is still immune. Gather ${remaining} more Prism ${remaining === 1 ? "Memory" : "Memories"} from NPC trials before the first seal can break.`,
-      });
-      return;
-    }
-
-    if (gameState.memorySealsBroken < MEMORY_SEAL_COUNT) {
-      if (gameState.prismMemories.length === 0) {
-        addLog(`You reach for a Prism Memory, but none remain to break Seal ${gameState.memorySealsBroken + 1}.`);
-        setModal({
-          type: "boss",
-          result: `Seal ${gameState.memorySealsBroken + 1} still holds. You need another Prism Memory before the boss can be weakened further.`,
-        });
-        return;
-      }
-
-      setModal({
-        type: "boss",
-        result: `Memory Seal ${gameState.memorySealsBroken + 1} bars the fight. Answer correctly to spend one Prism Memory and break it.`,
-        question: buildBossSealQuestion(realmPayload, gameState.memorySealsBroken),
-      });
-      return;
-    }
-
     const roll = rollDie(20);
     const total = roll + gameState.level;
     const hit = total >= BOSS_HIT_DC;
-    const damage = hit ? 6 + rollDie(8) + gameState.level * 2 : 0;
+    const rawDamage = hit ? 6 + rollDie(8) + gameState.level * 2 : 0;
+    const remainingSeals = Math.max(0, MEMORY_SEAL_COUNT - gameState.memorySealsBroken);
+    const damage = hit ? Math.max(1, Math.floor(rawDamage * (1 - remainingSeals * 0.2))) : 0;
     const nextBossHp = Math.max(0, bossHp - damage);
     const combatLog = hit
-      ? [`You hit the boss for ${damage}. Roll ${roll} + level ${gameState.level} = ${total}.`]
+      ? [`You hit the boss for ${damage}${remainingSeals > 0 ? ` through ${remainingSeals} armor seal${remainingSeals === 1 ? "" : "s"}` : ""}. Roll ${roll} + level ${gameState.level} = ${total}.`]
       : [`Your attack misses. Roll ${roll} + level ${gameState.level} = ${total}.`];
 
     if (nextBossHp <= 0) {
@@ -1531,6 +1505,23 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
     setModal({ type: "boss", result: `${hit ? `${damage} damage dealt.` : "Attack missed."} Boss countered for ${bossDamage}.` });
     playCue("hit");
     igniteDragonBreath();
+  };
+
+  const challengeBossSeal = () => {
+    if (!gameState || !realmPayload) return;
+    if (gameState.memorySealsBroken >= MEMORY_SEAL_COUNT) {
+      setModal({ type: "boss", result: `${theme.bossName} has no armor seals left. Attack for full damage.` });
+      return;
+    }
+    if (gameState.prismMemories.length === 0) {
+      setModal({ type: "boss", result: "You need a Prism Memory from an NPC trial to challenge an armor seal. You can still attack now." });
+      return;
+    }
+    setModal({
+      type: "boss",
+      result: `Challenge armor Seal ${gameState.memorySealsBroken + 1}. A correct answer consumes one Prism Memory and increases future attack damage.`,
+      question: buildBossSealQuestion(realmPayload, gameState.memorySealsBroken),
+    });
   };
 
   const runAutonomousWorldAction = useCallback(() => {
@@ -2400,6 +2391,7 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
           onNpcTrialAnswer={answerNpcTrial}
           onQuest={attemptQuest}
           onBossAttack={attackBoss}
+          onBossSealChallenge={challengeBossSeal}
           onBossTrialAnswer={answerBossSealTrial}
         />
       )}
@@ -2508,6 +2500,7 @@ function EncounterDialog(props: {
   onNpcTrialAnswer: (asset: RealmAsset, question: RealmTrialQuestion, answer: string) => void;
   onQuest: (asset: RealmAsset) => void;
   onBossAttack: () => void;
+  onBossSealChallenge: () => void;
   onBossTrialAnswer: (question: RealmTrialQuestion, answer: string) => void;
 }) {
   const { modal } = props;
@@ -2598,9 +2591,16 @@ function EncounterDialog(props: {
             </button>
           )}
           {modal.type === "boss" && (
-            <button onClick={props.onBossAttack} className="rounded-lg bg-ember px-5 py-2.5 text-sm font-semibold text-obsidian">
-              Attack
-            </button>
+            <>
+              <button onClick={props.onBossAttack} className="rounded-lg bg-ember px-5 py-2.5 text-sm font-semibold text-obsidian">
+                Attack Boss
+              </button>
+              {!modal.question && (
+                <button onClick={props.onBossSealChallenge} className="rounded-lg border border-gold/40 px-5 py-2.5 text-sm font-semibold text-gold">
+                  Challenge Armor Seal
+                </button>
+              )}
+            </>
           )}
           <button onClick={props.onClose} className="rounded-lg border border-white/10 px-5 py-2.5 text-sm font-semibold text-parchment">
             Close

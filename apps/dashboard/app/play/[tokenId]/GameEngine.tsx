@@ -48,6 +48,7 @@ import type {
   RealmVersionSummary,
   SaveProgressPayload,
   Tile,
+  TileType,
 } from "./types";
 
 const MAP_SIZE = 16;
@@ -2118,10 +2119,12 @@ export function GameEngine({ tokenId }: { tokenId: string }) {
               >
                 {grid.map((row, y) =>
                   row.map((tile, x) => (
-                    <TileCell
+                    <PixelTileCell
                       key={`${x}-${y}`}
                       tile={tile}
                       theme={theme}
+                      x={x}
+                      y={y}
                       isPlayer={gameState.playerPos.x === x && gameState.playerPos.y === y}
                       firePhase={dragonFireByTile.get(`${x}:${y}`)}
                     />
@@ -2484,6 +2487,136 @@ function TileCell({
       {firePhase && (
         <span className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center text-xl" aria-hidden>
           {firePhase === "burning" ? "\u{1F525}" : "!"}
+        </span>
+      )}
+    </div>
+  );
+}
+
+interface PixelSpriteSpec {
+  col: number;
+  row: number;
+}
+
+function PixelSprite({ sprite, className = "" }: { sprite: PixelSpriteSpec; className?: string }) {
+  return (
+    <span
+      className={`pixel-sprite ${className}`}
+      style={{ backgroundPosition: `${(sprite.col / 7) * 100}% ${(sprite.row / 5) * 100}%` }}
+      aria-hidden
+    />
+  );
+}
+
+function terrainSprite(theme: BiomeTheme, type: TileType, x: number, y: number): PixelSpriteSpec {
+  if (type === "wall") {
+    if (theme.id === "desert") return { col: 6 + ((x + y) % 2), row: 2 };
+    if (theme.id === "cave") return { col: 1, row: 3 };
+    if (theme.id === "neon") return { col: 7, row: 3 };
+    if (theme.id === "underwater") return { col: 1, row: 4 };
+    if (theme.id === "volcanic") return { col: 5, row: 4 };
+    if (theme.id === "citadel") return { col: 1, row: 5 };
+    return { col: 1, row: 2 };
+  }
+  if (theme.id === "desert") return { col: (x + y) % 4 === 0 ? 7 : 4, row: 2 };
+  if (theme.id === "cave") return { col: 0, row: 3 };
+  if (theme.id === "neon") return { col: 4, row: 3 };
+  if (theme.id === "underwater") return { col: 0, row: 4 };
+  if (theme.id === "volcanic") return { col: 4, row: 4 };
+  if (theme.id === "citadel") return { col: 0, row: 5 };
+  return { col: 0, row: 2 };
+}
+
+function objectSprite(theme: BiomeTheme, type: TileType, x: number, y: number): PixelSpriteSpec | null {
+  if (type === "npc") {
+    if (theme.id === "neon") return { col: 0, row: 1 };
+    if (theme.id === "underwater") return { col: 1, row: 1 };
+    return { col: 7, row: 0 };
+  }
+  if (type === "quest") return { col: 2, row: 1 };
+  if (type === "artifact") return { col: 3, row: 1 };
+  if (type === "exit") return { col: 4, row: 1 };
+  if (type === "danger") return { col: 5, row: 1 };
+  if (type !== "decoration") return null;
+
+  const variant = (x * 7 + y * 11) % 3;
+  if (theme.id === "desert") return [{ col: 5, row: 2 }, { col: 6, row: 2 }, { col: 3, row: 2 }][variant];
+  if (theme.id === "cave") return [{ col: 2, row: 3 }, { col: 3, row: 3 }, { col: 1, row: 3 }][variant];
+  if (theme.id === "neon") return [{ col: 5, row: 3 }, { col: 6, row: 3 }, { col: 7, row: 3 }][variant];
+  if (theme.id === "underwater") return [{ col: 1, row: 4 }, { col: 2, row: 4 }, { col: 3, row: 4 }][variant];
+  if (theme.id === "volcanic") return [{ col: 6, row: 4 }, { col: 7, row: 4 }, { col: 3, row: 3 }][variant];
+  if (theme.id === "citadel") return [{ col: 2, row: 5 }, { col: 3, row: 5 }, { col: 1, row: 5 }][variant];
+  return [{ col: 1, row: 2 }, { col: 2, row: 2 }, { col: 3, row: 2 }][variant];
+}
+
+function PixelTileCell({
+  tile,
+  theme,
+  x,
+  y,
+  isPlayer,
+  firePhase,
+}: {
+  tile: Tile;
+  theme: BiomeTheme;
+  x: number;
+  y: number;
+  isPlayer: boolean;
+  firePhase?: DragonFirePhase;
+}) {
+  const type = isPlayer ? "player" : tile.type;
+  const visualTileType: TileType = isPlayer ? "floor" : tile.type;
+  const terrain = terrainSprite(theme, visualTileType, x, y);
+  const object = objectSprite(theme, visualTileType, x, y);
+  const className =
+    type === "player"
+      ? "tile-player border-gold/70"
+      : type === "npc"
+        ? "border-moss/70"
+        : type === "quest"
+          ? "tile-quest border-accent-primary/70"
+          : type === "artifact"
+            ? "tile-artifact border-gold/60"
+            : type === "danger"
+              ? "tile-danger border-ember/70"
+              : type === "boss"
+                ? "tile-boss border-ember"
+                : type === "exit"
+                  ? "border-accent-secondary/70"
+                  : type === "wall"
+                    ? "border-white/10"
+                    : "border-white/5";
+
+  return (
+    <div
+      className={`pixel-tile relative flex h-10 w-10 select-none items-center justify-center overflow-hidden border transition hover:z-30 hover:brightness-125 ${className} ${
+        firePhase === "warning" ? "tile-fire-warning" : firePhase === "burning" ? "tile-fire-burning" : ""
+      }`}
+      title={type === "boss" ? `${theme.bossName} - realm dragon` : tile.asset?.name ?? tile.type}
+    >
+      <PixelSprite sprite={terrain} className="pixel-terrain" />
+      {type === "player" ? (
+        <span className="pixel-actor pixel-player-walk" aria-hidden>
+          <PixelSprite sprite={{ col: (x + y) % 2, row: 0 }} />
+          <PixelSprite sprite={{ col: 2 + ((x + y) % 2), row: 0 }} />
+        </span>
+      ) : type === "boss" ? (
+        <span className="pixel-actor pixel-dragon" aria-hidden>
+          <PixelSprite sprite={{ col: 4, row: 0 }} />
+          <PixelSprite sprite={{ col: 5, row: 0 }} />
+          <PixelSprite sprite={{ col: 6, row: 0 }} />
+        </span>
+      ) : object ? (
+        <PixelSprite sprite={object} className="pixel-object" />
+      ) : null}
+      {firePhase === "warning" && <span className="pixel-fire-warning-mark" aria-hidden />}
+      {firePhase === "burning" && (
+        <span className="pixel-fire-effect" aria-hidden>
+          <PixelSprite sprite={{ col: 6, row: 1 }} />
+          <PixelSprite sprite={{ col: 7, row: 1 }} />
+          <i />
+          <i />
+          <i />
         </span>
       )}
     </div>
